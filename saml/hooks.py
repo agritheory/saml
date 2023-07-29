@@ -196,6 +196,4 @@ app_license = "MIT"
 # Authentication and authorization
 # --------------------------------
 
-# auth_hooks = [
-# 	"saml.auth.authenticate"
-# ]
+auth_hooks = ["saml.auth.authenticate"]

@@ -19,6 +19,8 @@ Create a new site in that bench
 cd {{ bench name }}
 bench new-site {{ site name }} --force --db-name {{ site name }}
 bench use {{ site name }}
+bench set-config developer_mode 1
+bench set-config mute_emails 1
 ```
 
 

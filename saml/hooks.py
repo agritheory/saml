@@ -197,5 +197,5 @@ app_license = "MIT"
 # --------------------------------
 
 # auth_hooks = [
-#	"saml.auth.validate"
+# 	"saml.auth.authenticate"
 # ]

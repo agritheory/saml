@@ -48,3 +48,10 @@ source env/bin/activate
 mypy ./apps/saml/saml --ignore-missing-imports
 pytest ./apps/saml/saml/tests -s --disable-warnings
 ```
+
+## Setup example SAML Identity Provider 
+[Source](https://medium.com/disney-streaming/setup-a-single-sign-on-saml-test-environment-with-docker-and-nodejs-c53fc1a984c9)
+```shell
+docker run --name=testsamlidp -p 8080:8080 -p 8443:8443 -e SIMPLESAMLPHP_SP_ENTITY_ID=saml-poc -e SIMPLESAMLPHP_SP_ASSERTION_CONSUMER_SERVICE=http://localhost:4300/login/callback -d kristophjunge/test-saml-idp
+```
+

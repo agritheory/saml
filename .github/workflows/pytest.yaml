@@ -1,5 +1,4 @@
-
-name: Frappe CI
+name: Pytest CI
 
 on:
   push:
@@ -7,96 +6,73 @@ on:
       - version-15
   pull_request:
 
-concurrency:
-  group: develop-saml-${{ github.event.number }}
-  cancel-in-progress: true
-
 jobs:
   tests:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest]
-      fail-fast: false
-    name: Server
+    runs-on: ubuntu-latest
 
     services:
       mariadb:
         image: mariadb:10.6
         env:
-          MYSQL_ROOT_PASSWORD: root
+          MYSQL_ALLOW_EMPTY_PASSWORD: YES
+          MYSQL_ROOT_PASSWORD: 'admin'
         ports:
           - 3306:3306
         options: --health-cmd="mysqladmin ping" --health-interval=5s --health-timeout=2s --health-retries=3
 
     steps:
       - name: Clone
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Python
-        uses: actions/setup-python@v3
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
       - name: Setup Node
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: 20
           check-latest: true
+          cache: 'yarn'
+
+      - name: Add to Hosts
+        run: echo "127.0.0.1 test_site" | sudo tee -a /etc/hosts
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+            ${{ runner.os }}-
 
       - name: Install Poetry
         uses: snok/install-poetry@v1
-        with:
-          version: 1.5.1
-          virtualenvs-create: true
-          virtualenvs-in-project: true
 
-      - name: Cache poetry dependencies
-        uses: actions/cache@v3
-        with:
-          path: .venv
-          key: ${{ runner.os }}-poetry-${{ hashFiles('**/poetry.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-poetry-
+      - name: Install JS Dependencies
+        run: yarn --prefer-offline
 
-      - name: Get yarn cache directory path
-        id: yarn-cache-dir-path
-        run: 'echo "::set-output name=dir::$(yarn cache dir)"'
+      - name: Install App Dependencies
+        run: bash ${{ github.workspace }}/.github/helper/install_dependencies.sh
 
-      - uses: actions/cache@v3
-        id: yarn-cache
-        with:
-          path: ${{ steps.yarn-cache-dir-path.outputs.dir }}
-          key: ${{ runner.os }}-yarn-${{ hashFiles('**/yarn.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-yarn-
-
-      - name: Setup
-        run: |
-          pip install frappe-bench
-          bench init --skip-redis-config-generation --skip-assets --python "$(which python)" --frappe-branch version-14 ~/frappe-bench
-          mysql --host 127.0.0.1 --port 3306 -u root -proot -e "SET GLOBAL character_set_server = 'utf8mb4'"
-          mysql --host 127.0.0.1 --port 3306 -u root -proot -e "SET GLOBAL collation_server = 'utf8mb4_unicode_ci'"
-
-      - name: Install
-        working-directory: /home/runner/frappe-bench
-        run: |
-          bench get-app saml $GITHUB_WORKSPACE
-          cd ./apps/saml
-          poetry install --no-root
-          cd /home/runner/frappe-bench
-          bench new-site --db-root-password root --admin-password admin test_site
-          bench --site test_site install-app saml
-          bench build
+      - name: Install Bench Site and Apps
         env:
-          CI: 'Yes'
+          MYSQL_HOST: 'localhost'
+          MYSQL_PWD: 'admin'
+        run: bash ${{ github.workspace }}/.github/helper/install.sh
 
       - name: Run Tests
         working-directory: /home/runner/frappe-bench
         run: |
-          bench --site test_site set-config allow_tests true
-          bench --site test_site run-tests --app saml
           source env/bin/activate
-          pytest ./apps/saml/saml/tests/test_file_association.py --disable-warnings -s
-        env:
-          TYPE: server
+          cd apps/saml
+          poetry install
+          pytest --cov=saml --cov-report=xml --disable-warnings -s | tee pytest-coverage.txt
+
+      - name: Pytest coverage comment
+        uses: MishaKav/pytest-coverage-comment@main
+        with:
+          pytest-coverage-path: /home/runner/frappe-bench/apps/saml/pytest-coverage.txt
+          pytest-xml-coverage-path: /home/runner/frappe-bench/apps/saml/coverage.xml

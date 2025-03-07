@@ -12,8 +12,8 @@ locale
 *.egg-info
 dist/
 # build/
-cloud_storage/docs/current
-cloud_storage/public/dist
+beam/docs/current
+beam/public/dist
 .vscode
 .vs
 node_modules
@@ -216,6 +216,3 @@ lib
 
 # Prettier reformats code blocks inside Markdown, which affects rendered output
 *.md
-
-# In a Frappe context HTML files are either Jinja or Resig's microtemplate format and should not be checked
-*.html

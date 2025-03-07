@@ -1,3 +1,6 @@
+<!-- Copyright (c) 2025, AgriTheory and contributors
+For license information, please see license.txt-->
+
 ## SAML
 
 SAML2 Login for Frappe apps
@@ -35,13 +38,6 @@ bench migrate
 bench build
 ```
 
-Setup test data
-```shell
-bench execute 'saml.tests.setup.before_test'
-# for complete reset to run before tests:
-bench reinstall --yes --admin-password admin --mariadb-root-password admin && bench execute 'saml.tests.setup.before_test'
-```
-
 To run mypy and pytest
 ```shell
 source env/bin/activate
@@ -49,9 +45,9 @@ mypy ./apps/saml/saml --ignore-missing-imports
 pytest ./apps/saml/saml/tests -s --disable-warnings
 ```
 
-## Setup example SAML Identity Provider 
-[Source](https://medium.com/disney-streaming/setup-a-single-sign-on-saml-test-environment-with-docker-and-nodejs-c53fc1a984c9)
-```shell
-docker run --name=testsamlidp -p 8080:8080 -p 8443:8443 -e SIMPLESAMLPHP_SP_ENTITY_ID=saml-poc -e SIMPLESAMLPHP_SP_ASSERTION_CONSUMER_SERVICE=http://localhost:4300/login/callback -d kristophjunge/test-saml-idp
-```
+## Run sample SAML Identity Provider (Keycloak)
+Run the docker compose file located in tests: 
 
+```shell
+docker compose up --build
+```

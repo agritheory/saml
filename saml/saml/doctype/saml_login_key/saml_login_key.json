@@ -1,0 +1,101 @@
+{
+	"actions": [],
+	"doctype": "DocType",
+	"engine": "InnoDB",
+	"field_order": [
+		"enable_saml_login",
+		"provider_name",
+		"sp_details_section",
+		"sp_entity_id",
+		"sp_x509cert",
+		"sp_private_key",
+		"idp_details_section",
+		"idp_entity_id",
+		"idp_x509cert",
+		"idp_sso_url"
+	],
+	"fields": [
+		{
+			"default": "0",
+			"fieldname": "enable_saml_login",
+			"fieldtype": "Check",
+			"label": "Enable SAML Login"
+		},
+		{
+			"fieldname": "provider_name",
+			"fieldtype": "Data",
+			"in_list_view": 1,
+			"label": "Provider Name",
+			"reqd": 1
+		},
+		{
+			"fieldname": "sp_entity_id",
+			"fieldtype": "Data",
+			"label": "Service Provider Entity ID"
+		},
+		{
+			"fieldname": "idp_sso_url",
+			"fieldtype": "Data",
+			"label": "IDP SSO URL"
+		},
+		{
+			"fieldname": "idp_entity_id",
+			"fieldtype": "Data",
+			"label": "IDP Entity ID"
+		},
+		{
+			"fieldname": "idp_x509cert",
+			"fieldtype": "Text",
+			"label": "IDP x509cert"
+		},
+		{
+			"fieldname": "sp_x509cert",
+			"fieldtype": "Small Text",
+			"label": "Service Provider x509cert"
+		},
+		{
+			"collapsible": 1,
+			"depends_on": "eval:doc.enable_saml_login",
+			"fieldname": "sp_details_section",
+			"fieldtype": "Section Break",
+			"label": "Service Provider Details"
+		},
+		{
+			"collapsible": 1,
+			"depends_on": "eval:doc.enable_saml_login",
+			"fieldname": "idp_details_section",
+			"fieldtype": "Section Break",
+			"label": "IDP Details"
+		},
+		{
+			"fieldname": "sp_private_key",
+			"fieldtype": "Password",
+			"label": "Service Provider Private Key",
+			"length": 1600
+		}
+	],
+	"index_web_pages_for_search": 1,
+	"links": [],
+	"modified_by": "Administrator",
+	"module": "SAML",
+	"name": "SAML Login Key",
+	"owner": "Administrator",
+	"permissions": [
+		{
+			"create": 1,
+			"delete": 1,
+			"email": 1,
+			"export": 1,
+			"print": 1,
+			"read": 1,
+			"report": 1,
+			"role": "System Manager",
+			"share": 1,
+			"write": 1
+		}
+	],
+	"sort_field": "modified",
+	"sort_order": "DESC",
+	"states": [],
+	"title_field": "provider_name"
+}

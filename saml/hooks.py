@@ -1,4 +1,5 @@
-from . import __version__ as app_version
+# Copyright (c) 2025, AgriTheory and contributors
+# For license information, please see license.txt
 
 app_name = "saml"
 app_title = "SAML"
@@ -196,4 +197,4 @@ app_license = "MIT"
 # Authentication and authorization
 # --------------------------------
 
-auth_hooks = ["saml.auth.authenticate"]
+# auth_hooks = ["saml.auth.authenticate"]

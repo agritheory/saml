@@ -39,10 +39,9 @@ sed -i 's/schedule:/# schedule:/g' Procfile
 sed -i 's/socketio:/# socketio:/g' Procfile
 sed -i 's/redis_socketio:/# redis_socketio:/g' Procfile
 
-bench get-app erpnext https://github.com/frappe/erpnext --branch "version-15" --resolve-deps --skip-assets
-bench get-app beam "${GITHUB_WORKSPACE}" --skip-assets
+bench get-app saml "${GITHUB_WORKSPACE}" --skip-assets
 
-printf '%s\n' 'frappe' 'erpnext' 'beam' > ~/frappe-bench/sites/apps.txt
+printf '%s\n' 'frappe' 'saml' > ~/frappe-bench/sites/apps.txt
 bench setup requirements --python
 bench use test_site
 
@@ -59,4 +58,4 @@ bench list-apps
 
 bench start &> bench_run_logs.txt &
 CI=Yes &
-bench execute 'beam.tests.setup.before_test'
+bench execute 'saml.tests.setup.before_test'

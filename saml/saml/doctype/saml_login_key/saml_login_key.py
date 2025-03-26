@@ -26,3 +26,19 @@ class SAMLLoginKey(Document):
 
 	def autoname(self):
 		self.name = frappe.scrub(self.provider_name)
+
+	def validate(self):
+		self.sort_by_role_profile()
+
+	def sort_by_role_profile(self):
+		roles, role_profiles = [], []
+		for row in self.roles:
+			if row.role_or_role_profile == "Role Profile":
+				role_profiles.append(row)
+			else:
+				roles.append(row)
+		if self.roles != role_profiles + roles:
+			self.roles = []
+			for index, row in enumerate(role_profiles + roles, start=1):
+				row.idx = index
+				self.roles.append(row)

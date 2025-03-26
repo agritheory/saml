@@ -1,0 +1,34 @@
+[
+	{
+		"docstatus": 0,
+		"doctype": "SAML Login Key",
+		"enable_saml_login": 1,
+		"idp_entity_id": "http://localhost:8080/realms/frappe",
+		"idp_sso_url": "http://localhost:8080/realms/frappe/protocol/saml",
+		"idp_x509cert": "MIICmzCCAYMCBgGV00IRtTANBgkqhkiG9w0BAQsFADARMQ8wDQYDVQQDDAZmcmFwcGUwHhcNMjUwMzI2MTYxOTM3WhcNMzUwMzI2MTYyMTE3WjARMQ8wDQYDVQQDDAZmcmFwcGUwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCe+qrvUjnhebfSph+N84eXp99K0Y8UQyiSTKLEuq5nAKmyihCQQ5lwiea6ByxuFfA3XPoEwyLzytRhmSu6F30I2QOsbiIVEyzbjeXawZNIWJrPjqNHFQ6fkPNuEcL1+fdexu+ViktgKzYi7DmnRYYER66e/zxoLopTxZ7ux3Q56lLXT6PjLbDzezkMMor7UySxPYX24fCrgAmXIAcrvZkDdKXN7j0MALU9M0AC1rlmJEbOhG3UuVU4GlFJ8F4QhLfEe+VTJdUofgL5NnRyLNCyYAnD6k9Os9z4fJynggu/VxNungyRYmqlm2JHT5uQf8W9RBVjCIr699ggNxKfk0yBAgMBAAEwDQYJKoZIhvcNAQELBQADggEBAIFtgh0w20bNJ7lm9/ajLsBth75uAgS2wCpjxIDHf3avohRTSTGy4sATpPhc50AFTCfnqr/IO6uhhndQNRRiIQp5M6ySWh6ikGWEx8f0bQXleu4fEc4ykURmtH/1JDJMuc3PYb7lPBNacWMAgl/opYCu/BlVPh47XkKdzxeKHg6ikuB3FepUxuH9X3NpEFyzRAvcEx+EbRWHGFe6C23ECZu3vbAQpTKhmY6Ca9+wkZcpn5l9Sn5XtnqrqEdiYJ5aN9Bqdk+mWVYIbwp6ZWQXaln20eecEFc4kPEvtch/fLuZrFU0ZL+89PcYIP16bk8YMPGmsxZXyH5lyyVkQclzGdA=",
+		"modified": "2025-03-26 08:49:03.197645",
+		"name": "keycloak",
+		"provider_name": "Keycloak",
+		"roles": [
+			{
+				"parent": "keycloak",
+				"parentfield": "roles",
+				"parenttype": "SAML Login Key",
+				"role_or_role_profile": "Role Profile",
+				"saml_role": "Knowledge Base",
+				"user_role": "Knowledge Base"
+			},
+			{
+				"parent": "keycloak",
+				"parentfield": "roles",
+				"parenttype": "SAML Login Key",
+				"role_or_role_profile": "Role",
+				"saml_role": "System Administrator",
+				"user_role": "System Manager"
+			}
+		],
+		"sp_entity_id": "frappe-saml",
+		"sp_private_key": "****************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************",
+		"sp_x509cert": "MIICpTCCAY0CBgGVsxUaQzANBgkqhkiG9w0BAQsFADAWMRQwEgYDVQQDDAtmcmFwcGUtc2FtbDAeFw0yNTAzMjAxMDIyMzlaFw0zNTAzMjAxMDI0MTlaMBYxFDASBgNVBAMMC2ZyYXBwZS1zYW1sMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAz2YMcvKqgZ1Bgd1JfkQ43AcNG8kQ9TdkNyZEs6x6rXQbebWF6sd/MBKIwba2MExWhhG6WETY2bqxz8rrsnFGKmIxXbr1MFBPCkTaHqHIv1xjHCzCGOj2bkuzmUfVsjJR2AUmwN4iz0QhIc9Ay5ODVjkglLOQCRoNYsTnTB/V13n3Op+fGPkl/sfBO4I7XjuGqz4vqfUqx3OOq+EGpL96c9Rk2kv8p/Ikb0P/0cTPkAsEvrA0JECRAQnTpGpmKtxFQEPLWH1dVy+sak0GsVu6OVDrwLKq1Q5Tj1hnUidCko64RwGrTbsVfwJvfh+baM8/sw/JnLAhb9Ki/P2rUu5VHwIDAQABMA0GCSqGSIb3DQEBCwUAA4IBAQBgZe4oqaCW10NGDLUr0SiYXPPYaNUYWvEASi8P7PDv24h4I9l/V8RP9j1LmqgCuEdn1yxBiL+SHiM9pH6BfC7CNL4zsCjVBQgnQPGu9RK/C6s+fMAOJloGIQeb+qLQLG0pvjFWl+6nGTWLGzlzRih8X3QiAC2tzI8ZcVlrj7lXOJ4ENNoYcKCg/DBOoDgnFm7aRuaTaUIn2z7tfSYLShuB2urTgOn5wUj+LbkY+ZPoAtIubz38XGmxdZesiJGLN+NBcSmB8chjXp/ASUQmp8BFIWgahMDkFHZDMBmEhfEuDwOdT11M8eIH+ko8sN/oSICHE0gb9tDeQ0+oAjjN89fF"
+	}
+]

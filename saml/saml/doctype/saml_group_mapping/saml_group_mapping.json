@@ -5,7 +5,7 @@
 	"doctype": "DocType",
 	"editable_grid": 1,
 	"engine": "InnoDB",
-	"field_order": ["saml_role", "user_role"],
+	"field_order": ["saml_role", "role_or_role_profile", "user_role"],
 	"fields": [
 		{
 			"fieldname": "saml_role",
@@ -16,18 +16,26 @@
 		},
 		{
 			"fieldname": "user_role",
-			"fieldtype": "Link",
+			"fieldtype": "Dynamic Link",
 			"in_list_view": 1,
 			"label": "User Role",
-			"options": "Role",
+			"options": "role_or_role_profile",
+			"reqd": 1
+		},
+		{
+			"default": "Role",
+			"fieldname": "role_or_role_profile",
+			"fieldtype": "Select",
+			"in_list_view": 1,
+			"label": "Role or Role Profile",
+			"options": "Role\nRole Profile",
 			"reqd": 1
 		}
 	],
-	"grid_page_length": 50,
 	"index_web_pages_for_search": 1,
 	"istable": 1,
 	"links": [],
-	"modified": "2025-03-26 12:59:45.900316",
+	"modified": "2025-03-26 08:41:32.025628",
 	"modified_by": "Administrator",
 	"module": "SAML",
 	"name": "SAML Group Mapping",

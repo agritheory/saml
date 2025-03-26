@@ -151,13 +151,36 @@ def acs():
 		else:
 			user = frappe.get_doc("User", user_email)
 
-		# Map SAML roles
-		roles = attributes.get("Role", [])
-		for role in roles:
-			for role_mapping in saml_key.roles:
-				if role_mapping.saml_role == role:
-					user.flags.ignore_permissions = True
-					user.add_roles(role_mapping.user_role)
+		# Map SAML roles to Role and Role Profile
+		if saml_key.apply_saml_roles:
+			roles = attributes.get("Role", [])
+			roles_to_apply = []
+			user.flags.ignore_permissions = True
+			for role in roles:
+				for role_mapping in saml_key.roles:
+					if role_mapping.saml_role == role:
+						if role_mapping.role_or_role_profile == "Role Profile":
+							if user.role_profile_name == role_mapping.saml_role == role:
+								break
+							elif role_mapping.saml_role == role:
+								user.role_profile_name = role_mapping.user_role
+								user.save()
+								break
+						else:
+							# reset role profile
+							if user.role_profile_name:
+								user.roles = []
+								user.role_profile_name = ""
+								user.save()
+							roles_to_apply.append(role_mapping.user_role)
+
+			if roles_to_apply:
+				user.add_roles(roles_to_apply)
+			if saml_key.match_saml_roles:
+				for has_role in reversed(user.roles):
+					if has_role.role not in roles_to_apply:
+						user.roles.remove(has_role)
+				user.save()
 
 		# Log the user in
 		frappe.local.login_manager.user = user.name

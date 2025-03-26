@@ -6,6 +6,10 @@
 	"field_order": [
 		"enable_saml_login",
 		"provider_name",
+		"column_break_mfbv",
+		"apply_saml_roles",
+		"match_saml_roles",
+		"terminate_saml_session_on_logout",
 		"sp_details_section",
 		"sp_entity_id",
 		"sp_x509cert",
@@ -87,11 +91,33 @@
 			"fieldtype": "Table",
 			"label": "SAML Role Mappings",
 			"options": "SAML Group Mapping"
+		},
+		{
+			"fieldname": "column_break_mfbv",
+			"fieldtype": "Column Break"
+		},
+		{
+			"default": "0",
+			"fieldname": "apply_saml_roles",
+			"fieldtype": "Check",
+			"label": "Apply SAML Roles"
+		},
+		{
+			"default": "0",
+			"fieldname": "match_saml_roles",
+			"fieldtype": "Check",
+			"label": "Match SAML Roles"
+		},
+		{
+			"default": "0",
+			"fieldname": "terminate_saml_session_on_logout",
+			"fieldtype": "Check",
+			"label": "Terminate SAML Session on logout"
 		}
 	],
 	"index_web_pages_for_search": 1,
 	"links": [],
-	"modified": "2025-03-26 13:58:23.895230",
+	"modified": "2025-03-26 09:30:52.294763",
 	"modified_by": "Administrator",
 	"module": "SAML",
 	"name": "SAML Login Key",

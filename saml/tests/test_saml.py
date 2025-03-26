@@ -67,4 +67,5 @@ def test_saml_request(saml_auth):
 	parsed_url = urlparse(redirect_url)
 	query_params = parse_qs(parsed_url.query)
 	saml_request = unquote(query_params["SAMLRequest"][0])
-	assert OneLogin_Saml2_Utils.decode_base64_and_inflate(saml_request)
+	decoded_inflated_string = OneLogin_Saml2_Utils.decode_base64_and_inflate(saml_request)
+	assert decoded_inflated_string is not None

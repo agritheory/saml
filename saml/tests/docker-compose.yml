@@ -28,9 +28,10 @@ services:
       - KEYCLOAK_ADMIN=admin
       - KEYCLOAK_ADMIN_PASSWORD=admin
       - KC_HEALTH_ENABLED=true
-    command: ['start-dev']
+    command: ['start-dev', '--import-realm']
     volumes:
       - 'keycloak-data:/opt/keycloak/data'
+      - './realm-export.json:/opt/keycloak/data/import/realm.json'
 
 volumes:
   postgres-data:

@@ -1,5 +1,4 @@
-
-name: Frappe CI
+name: Tests
 
 on:
   push:
@@ -8,17 +7,19 @@ on:
   pull_request:
 
 concurrency:
-  group: develop-saml-${{ github.event.number }}
+  group: version-15-saml-${{ github.event.number }}
   cancel-in-progress: true
+
+permissions:
+  contents: write
+  checks: write
+  issues: write
+  pull-requests: write
 
 jobs:
   tests:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest]
-      fail-fast: false
     name: Server
+    runs-on: ubuntu-latest
 
     services:
       mariadb:
@@ -31,64 +32,71 @@ jobs:
 
     steps:
       - name: Clone
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Python
-        uses: actions/setup-python@v3
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
-      - name: Setup Node
-        uses: actions/setup-node@v3
+      - name: Install Poetry
+        uses: abatilo/actions-poetry@v4
+
+      - name: Cache Poetry
+        uses: actions/cache@v4
         with:
-          node-version: 18
-          check-latest: true
+          path: ./.venv
+          key: venv-${{ hashFiles('poetry.lock') }}
 
-      - name: Cache pip
-        uses: actions/cache@v3
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/*requirements.txt', '**/pyproject.toml', '**/setup.py', '**/setup.cfg') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
-            ${{ runner.os }}-
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install pkg-config libxml2-dev libxmlsec1-dev libxmlsec1-openssl
 
-      - name: Get yarn cache directory path
-        id: yarn-cache-dir-path
-        run: 'echo "::set-output name=dir::$(yarn cache dir)"'
-
-      - uses: actions/cache@v3
-        id: yarn-cache
-        with:
-          path: ${{ steps.yarn-cache-dir-path.outputs.dir }}
-          key: ${{ runner.os }}-yarn-${{ hashFiles('**/yarn.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-yarn-
-
-      - name: Setup
+      - name: Setup Bench
         run: |
           pip install frappe-bench
-          bench init --skip-redis-config-generation --skip-assets --python "$(which python)" --frappe-branch version-14 ~/frappe-bench
+          bench init --skip-redis-config-generation --skip-assets --python "$(which python)" --frappe-branch version-15 ~/frappe-bench
           mysql --host 127.0.0.1 --port 3306 -u root -proot -e "SET GLOBAL character_set_server = 'utf8mb4'"
           mysql --host 127.0.0.1 --port 3306 -u root -proot -e "SET GLOBAL collation_server = 'utf8mb4_unicode_ci'"
 
-      - name: Install
+      - name: Install Dependencies
+        working-directory: /home/runner/frappe-bench
+        run: |
+          bench pip install pytest pytest-cov
+          # reinstall lxml; ref: https://github.com/SAML-Toolkits/python3-saml#note
+          bench pip install --force-reinstall --no-binary lxml lxml
+
+      - name: Install SAML
         working-directory: /home/runner/frappe-bench
         run: |
           bench get-app saml $GITHUB_WORKSPACE
           bench setup requirements --dev
           bench new-site --db-root-password root --admin-password admin test_site
           bench --site test_site install-app saml
+          bench use test_site
           bench build
         env:
           CI: 'Yes'
 
-      - name: Run Tests
+      - name: Run Frappe Tests
         working-directory: /home/runner/frappe-bench
         run: |
           bench --site test_site set-config allow_tests true
           bench --site test_site run-tests --app saml
+
+      - name: Run Pytest Tests
+        working-directory: /home/runner/frappe-bench
+        run: |
           source env/bin/activate
-          pytest ./apps/saml/saml/tests/test_file_association.py --disable-warnings -s
+          cd apps/saml
+          poetry install
+          pytest --cov=saml --cov-report=xml --disable-warnings -s | tee pytest-coverage.txt
         env:
           TYPE: server
+
+      - name: Pytest coverage comment
+        uses: MishaKav/pytest-coverage-comment@main
+        with:
+          pytest-coverage-path: /home/runner/frappe-bench/apps/saml/pytest-coverage.txt
+          pytest-xml-coverage-path: /home/runner/frappe-bench/apps/saml/coverage.xml

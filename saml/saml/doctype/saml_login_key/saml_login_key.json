@@ -1,5 +1,6 @@
 {
 	"actions": [],
+	"creation": "2025-03-20 15:15:38.653413",
 	"doctype": "DocType",
 	"engine": "InnoDB",
 	"field_order": [
@@ -12,7 +13,9 @@
 		"idp_details_section",
 		"idp_entity_id",
 		"idp_x509cert",
-		"idp_sso_url"
+		"idp_sso_url",
+		"mappings_section",
+		"roles"
 	],
 	"fields": [
 		{
@@ -72,10 +75,23 @@
 			"fieldtype": "Password",
 			"label": "Service Provider Private Key",
 			"length": 1600
+		},
+		{
+			"collapsible": 1,
+			"fieldname": "mappings_section",
+			"fieldtype": "Section Break",
+			"label": "Mappings"
+		},
+		{
+			"fieldname": "roles",
+			"fieldtype": "Table",
+			"label": "SAML Role Mappings",
+			"options": "SAML Group Mapping"
 		}
 	],
 	"index_web_pages_for_search": 1,
 	"links": [],
+	"modified": "2025-03-26 13:58:23.895230",
 	"modified_by": "Administrator",
 	"module": "SAML",
 	"name": "SAML Login Key",

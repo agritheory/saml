@@ -13,11 +13,23 @@ services:
       timeout: 5s
       retries: 5
 
+  realm-processor:
+    image: python:3.12-slim
+    volumes:
+      - ./realm-template.json:/app/realm-template.json
+      - ./realm-export.json:/app/realm-export.json
+      - ./process_realm.py:/app/process_realm.py
+    command: python /app/process_realm.py
+    environment:
+      - BENCH_PORT=${BENCH_PORT:-8000}
+
   keycloak:
     image: quay.io/keycloak/keycloak:24.0.1
     depends_on:
       postgres:
         condition: service_healthy
+      realm-processor:
+        condition: service_completed_successfully
     ports:
       - '8080:8080'
     environment:

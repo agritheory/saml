@@ -577,15 +577,15 @@
 			"clientId": "frappe-saml",
 			"name": "",
 			"description": "",
-			"rootUrl": "http://localhost:8005",
+			"rootUrl": "{generatedByDockerCompose}",
 			"adminUrl": "",
-			"baseUrl": "http://localhost:8005",
+			"baseUrl": "{generatedByDockerCompose}",
 			"surrogateAuthRequired": false,
 			"enabled": true,
 			"alwaysDisplayInConsole": false,
 			"clientAuthenticatorType": "client-secret",
-			"redirectUris": ["http://localhost:8005/*"],
-			"webOrigins": ["http://localhost:8005"],
+			"redirectUris": ["{generatedByDockerCompose}/*"],
+			"webOrigins": ["{generatedByDockerCompose}"],
 			"notBefore": 0,
 			"bearerOnly": false,
 			"consentRequired": false,
@@ -619,6 +619,47 @@
 			"authenticationFlowBindingOverrides": {},
 			"fullScopeAllowed": true,
 			"nodeReRegistrationTimeout": -1,
+			"protocolMappers": [
+				{
+					"id": "b38e4a36-2c3f-430f-a593-e46a49b3a5a5",
+					"name": "X500 surname",
+					"protocol": "saml",
+					"protocolMapper": "saml-user-property-mapper",
+					"consentRequired": false,
+					"config": {
+						"attribute.nameformat": "urn:oasis:names:tc:SAML:2.0:attrname-format:uri",
+						"user.attribute": "lastName",
+						"friendly.name": "surname",
+						"attribute.name": "urn:oid:2.5.4.4"
+					}
+				},
+				{
+					"id": "ac038c95-f5f5-4366-bcfc-a9249c4bf5ae",
+					"name": "X500 email",
+					"protocol": "saml",
+					"protocolMapper": "saml-user-property-mapper",
+					"consentRequired": false,
+					"config": {
+						"attribute.nameformat": "urn:oasis:names:tc:SAML:2.0:attrname-format:uri",
+						"user.attribute": "email",
+						"friendly.name": "email",
+						"attribute.name": "urn:oid:1.2.840.113549.1.9.1"
+					}
+				},
+				{
+					"id": "f251c466-20a1-4872-b89d-fcaad4aa7063",
+					"name": "X500 givenName",
+					"protocol": "saml",
+					"protocolMapper": "saml-user-property-mapper",
+					"consentRequired": false,
+					"config": {
+						"attribute.nameformat": "urn:oasis:names:tc:SAML:2.0:attrname-format:uri",
+						"user.attribute": "firstName",
+						"friendly.name": "givenName",
+						"attribute.name": "urn:oid:2.5.4.42"
+					}
+				}
+			],
 			"defaultClientScopes": ["role_list"],
 			"optionalClientScopes": []
 		},

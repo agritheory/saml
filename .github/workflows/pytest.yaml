@@ -25,7 +25,8 @@ jobs:
       mariadb:
         image: mariadb:10.6
         env:
-          MYSQL_ROOT_PASSWORD: root
+          MYSQL_ALLOW_EMPTY_PASSWORD: YES
+          MYSQL_ROOT_PASSWORD: 'admin'
         ports:
           - 3306:3306
         options: --health-cmd="mysqladmin ping" --health-interval=5s --health-timeout=2s --health-retries=3
@@ -39,6 +40,9 @@ jobs:
         with:
           python-version: '3.10'
 
+      - name: Add to Hosts
+        run: echo "127.0.0.1 test_site" | sudo tee -a /etc/hosts
+
       - name: Install Poetry
         uses: abatilo/actions-poetry@v4
 
@@ -48,40 +52,14 @@ jobs:
           path: ./.venv
           key: venv-${{ hashFiles('poetry.lock') }}
 
-      - name: Install System Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install pkg-config libxml2-dev libxmlsec1-dev libxmlsec1-openssl
+      - name: Install App Dependencies
+        run: bash ${{ github.workspace }}/.github/helper/install_dependencies.sh
 
-      - name: Setup Bench
-        run: |
-          pip install frappe-bench
-          bench init --skip-redis-config-generation --skip-assets --python "$(which python)" --frappe-branch version-15 ~/frappe-bench
-          mysql --host 127.0.0.1 --port 3306 -u root -proot -e "SET GLOBAL character_set_server = 'utf8mb4'"
-          mysql --host 127.0.0.1 --port 3306 -u root -proot -e "SET GLOBAL collation_server = 'utf8mb4_unicode_ci'"
-
-      - name: Install Dependencies
-        working-directory: /home/runner/frappe-bench
-        run: |
-          bench pip install pytest pytest-cov
-          # reinstall lxml; ref: https://github.com/SAML-Toolkits/python3-saml#note
-          bench pip install --force-reinstall --no-binary lxml lxml
-
-      - name: Install SAML
-        working-directory: /home/runner/frappe-bench
-        run: |
-          bench get-app saml $GITHUB_WORKSPACE
-          bench setup requirements --dev
-          bench new-site --db-root-password root --admin-password admin test_site
-          bench --site test_site install-app saml
-          bench use test_site
-          bench build
+      - name: Install Bench Site and Apps
         env:
-          CI: 'Yes'
-
-      - name: Generate Test Data
-        working-directory: /home/runner/frappe-bench
-        run: bench --site test_site execute 'saml.tests.setup.before_test'
+          MYSQL_HOST: 'localhost'
+          MYSQL_PWD: 'admin'
+        run: bash ${{ github.workspace }}/.github/helper/install.sh
 
       - name: Run Frappe Tests
         working-directory: /home/runner/frappe-bench

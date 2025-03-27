@@ -71,9 +71,27 @@
 				"attributes": {}
 			},
 			{
+				"id": "2ded270c-8d14-4318-ac9f-39a9a8f044de",
+				"name": "System Administrator",
+				"description": "",
+				"composite": false,
+				"clientRole": false,
+				"containerId": "9779947e-3a7d-446c-8b4f-54106988fec1",
+				"attributes": {}
+			},
+			{
 				"id": "4a093609-be52-4654-afd6-f63bda69dbcf",
 				"name": "offline_access",
 				"description": "${role_offline-access}",
+				"composite": false,
+				"clientRole": false,
+				"containerId": "9779947e-3a7d-446c-8b4f-54106988fec1",
+				"attributes": {}
+			},
+			{
+				"id": "0e5a2c0e-8b8d-44c2-b1ee-a309c337d0c2",
+				"name": "Knowledge Base",
+				"description": "",
 				"composite": false,
 				"clientRole": false,
 				"containerId": "9779947e-3a7d-446c-8b4f-54106988fec1",

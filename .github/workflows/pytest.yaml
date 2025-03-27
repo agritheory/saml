@@ -79,6 +79,10 @@ jobs:
         env:
           CI: 'Yes'
 
+      - name: Generate Test Data
+        working-directory: /home/runner/frappe-bench
+        run: bench --site test_site execute 'saml.tests.setup.before_test'
+
       - name: Run Frappe Tests
         working-directory: /home/runner/frappe-bench
         run: |

@@ -4,6 +4,8 @@
 import frappe
 from frappe.model.document import Document
 
+from onelogin.saml2.auth import OneLogin_Saml2_Settings
+
 
 class SAMLLoginKey(Document):
 	# begin: auto-generated types
@@ -42,3 +44,33 @@ class SAMLLoginKey(Document):
 			for index, row in enumerate(role_profiles + roles, start=1):
 				row.idx = index
 				self.roles.append(row)
+
+	def get_settings(self, acs_url: str):
+		return OneLogin_Saml2_Settings(
+			{
+				"strict": False,
+				"sp": {
+					"entityId": self.sp_entity_id,
+					"assertionConsumerService": {
+						"url": acs_url,
+						"binding": "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST",
+					},
+					"privateKey": self.get_password("sp_private_key"),
+					"x509cert": self.sp_x509cert,
+				},
+				"idp": {
+					"entityId": self.idp_entity_id,
+					"singleSignOnService": {
+						"url": self.idp_sso_url,
+						"binding": "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect",
+					},
+					"x509cert": self.idp_x509cert,
+				},
+				"security": {
+					"authnRequestsSigned": True,
+					"signatureAlgorithm": "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256",
+					"digestAlgorithm": "http://www.w3.org/2001/04/xmlenc#sha256",
+					"rejectUnsolicitedResponsesWithInResponseTo": False,
+				},
+			}
+		)

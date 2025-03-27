@@ -9,34 +9,9 @@ from onelogin.saml2.auth import OneLogin_Saml2_Auth, OneLogin_Saml2_Settings
 @frappe.whitelist(allow_guest=True)
 def login(provider):
 	saml_key = frappe.get_doc("SAML Login Key", provider)
-	saml_settings = OneLogin_Saml2_Settings(
-		{
-			"sp": {
-				"entityId": saml_key.sp_entity_id,
-				"assertionConsumerService": {
-					"url": frappe.utils.get_url(f"/api/method/saml.saml.acs?provider={provider}"),
-					"binding": "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST",
-				},
-				"privateKey": saml_key.get_password("sp_private_key"),
-				"x509cert": saml_key.sp_x509cert,
-			},
-			"idp": {
-				"entityId": saml_key.idp_entity_id,
-				"singleSignOnService": {
-					"url": saml_key.idp_sso_url,
-					"binding": "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect",
-				},
-				"x509cert": saml_key.idp_x509cert,
-			},
-			"security": {
-				"authnRequestsSigned": True,  # Sign SAML authentication requests
-				"signatureAlgorithm": "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256",
-				"digestAlgorithm": "http://www.w3.org/2001/04/xmlenc#sha256",
-				"rejectUnsolicitedResponsesWithInResponseTo": False,
-			},
-		}
+	saml_settings = saml_key.get_settings(
+		frappe.utils.get_url(f"/api/method/saml.saml.acs?provider={provider}")
 	)
-
 	client = OneLogin_Saml2_Auth(get_request_data(provider), saml_settings)
 	redirect_location = frappe.local.request.args.get("redirect-to", "")
 	redirect_url = client.login(return_to=redirect_location)
@@ -72,7 +47,6 @@ def acs():
 		saml_key = frappe.get_doc("SAML Login Key", query_data.get("provider"))
 		saml_settings = OneLogin_Saml2_Settings(
 			{
-				"debug": True,
 				"sp": {
 					"entityId": saml_key.sp_entity_id,
 					"assertionConsumerService": {

@@ -71,9 +71,10 @@ def acs():
 
 		errors = client.get_errors()
 		if errors:
+			error_reason = client.get_last_error_reason()
 			frappe.respond_as_web_page(
 				_("SAML Login Failed"),
-				_("Invalid SAML response: ") + ", ".join(errors),
+				_(f"Invalid SAML response: {error_reason}"),
 				http_status_code=403,
 			)
 			return

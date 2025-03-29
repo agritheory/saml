@@ -198,3 +198,4 @@ app_license = "MIT"
 # --------------------------------
 
 # auth_hooks = ["saml.auth.authenticate"]
+on_logout = "saml.saml.logout"

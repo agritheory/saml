@@ -18,6 +18,7 @@
 		"idp_entity_id",
 		"idp_x509cert",
 		"idp_sso_url",
+		"idp_slo_url",
 		"mappings_section",
 		"roles"
 	],
@@ -113,6 +114,12 @@
 			"fieldname": "terminate_saml_session_on_logout",
 			"fieldtype": "Check",
 			"label": "Terminate SAML Session on logout"
+		},
+		{
+			"fieldname": "idp_slo_url",
+			"fieldtype": "Data",
+			"label": "IDP Single Logout URL",
+			"description": "URL where logout requests should be sent to terminate the SAML session"
 		}
 	],
 	"index_web_pages_for_search": 1,

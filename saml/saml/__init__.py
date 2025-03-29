@@ -160,6 +160,9 @@ def acs():
 		# Log the user in
 		frappe.local.login_manager.user = user.name
 		frappe.local.login_manager.post_login()
+		frappe.session.saml_provider = saml_key
+		if session_index := client.get_session_index():
+			frappe.session.saml_session_index = session_index
 		frappe.db.commit()
 		redirect_to = post_data.get("RelayState")
 
@@ -172,3 +175,16 @@ def acs():
 	except Exception as e:
 		frappe.log_error(frappe.get_traceback(), _("SAML Login Error"))
 		frappe.respond_as_web_page(_("SAML Login Failed"), frappe.get_traceback(), http_status_code=500)
+
+
+def logout(login_manager):
+	"""Handle SAML logout when user logs out of Frappe"""
+	# Check if user was logged in via SAML
+	if frappe.session.get("saml_provider"):
+		provider = frappe.session.get("saml_provider")
+		logout_result = frappe.call("saml.saml.logout", provider=provider)
+
+		# If successful and a logout URL was provided, redirect to it
+		if logout_result.get("success") and logout_result.get("logout_url"):
+			frappe.local.response["type"] = "redirect"
+			frappe.local.response["location"] = logout_result.get("logout_url")

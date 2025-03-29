@@ -1,0 +1,51 @@
+[
+	{
+		"name": "Knowledge Base",
+		"owner": "Administrator",
+		"modified_by": "Administrator",
+		"role_profile": "Knowledge Base",
+		"doctype": "Role Profile",
+		"roles": [
+			{
+				"idx": 1,
+				"role": "Blogger",
+				"parent": "Knowledge Base",
+				"parentfield": "roles",
+				"parenttype": "Role Profile",
+				"doctype": "Has Role"
+			},
+			{
+				"idx": 2,
+				"role": "Knowledge Base Contributor",
+				"parent": "Knowledge Base",
+				"parentfield": "roles",
+				"parenttype": "Role Profile",
+				"doctype": "Has Role"
+			},
+			{
+				"idx": 3,
+				"role": "Knowledge Base Editor",
+				"parent": "Knowledge Base",
+				"parentfield": "roles",
+				"parenttype": "Role Profile",
+				"doctype": "Has Role"
+			},
+			{
+				"idx": 4,
+				"role": "Newsletter Manager",
+				"parent": "Knowledge Base",
+				"parentfield": "roles",
+				"parenttype": "Role Profile",
+				"doctype": "Has Role"
+			},
+			{
+				"idx": 5,
+				"role": "Website Manager",
+				"parent": "Knowledge Base",
+				"parentfield": "roles",
+				"parenttype": "Role Profile",
+				"doctype": "Has Role"
+			}
+		]
+	}
+]

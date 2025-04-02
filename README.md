@@ -63,10 +63,12 @@ mypy ./apps/saml/saml --ignore-missing-imports
 pytest ./apps/saml/saml/tests -s --disable-warnings
 ```
 
-## Run sample SAML Identity Provider (Keycloak)
+## Tests (using Keycloak)
 
-Run the docker compose file located in tests:
+This app comes with a `docker-compose` file that sets up a Keycloak instance for testing, which would rely on your current site's information.
+
+In the tests folder, simply run the following script to get the active bench port and start the Keycloak instance:
 
 ```shell
-docker compose up --build
+./keycloak.sh --build
 ```

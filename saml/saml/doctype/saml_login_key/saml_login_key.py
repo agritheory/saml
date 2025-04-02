@@ -1,9 +1,10 @@
 # Copyright (c) 2025, AgriTheory and contributors
 # For license information, please see license.txt
 
-
 import frappe
 from frappe.model.document import Document
+
+from onelogin.saml2.auth import OneLogin_Saml2_Settings
 
 
 class SAMLLoginKey(Document):
@@ -27,3 +28,49 @@ class SAMLLoginKey(Document):
 
 	def autoname(self):
 		self.name = frappe.scrub(self.provider_name)
+
+	def validate(self):
+		self.sort_by_role_profile()
+
+	def sort_by_role_profile(self):
+		roles, role_profiles = [], []
+		for row in self.roles:
+			if row.role_or_role_profile == "Role Profile":
+				role_profiles.append(row)
+			else:
+				roles.append(row)
+		if self.roles != role_profiles + roles:
+			self.roles = []
+			for index, row in enumerate(role_profiles + roles, start=1):
+				row.idx = index
+				self.roles.append(row)
+
+	def get_settings(self, acs_url: str):
+		return OneLogin_Saml2_Settings(
+			{
+				"strict": False,
+				"sp": {
+					"entityId": self.sp_entity_id,
+					"assertionConsumerService": {
+						"url": acs_url,
+						"binding": "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST",
+					},
+					"privateKey": self.get_password("sp_private_key"),
+					"x509cert": self.sp_x509cert,
+				},
+				"idp": {
+					"entityId": self.idp_entity_id,
+					"singleSignOnService": {
+						"url": self.idp_sso_url,
+						"binding": "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect",
+					},
+					"x509cert": self.idp_x509cert,
+				},
+				"security": {
+					"authnRequestsSigned": True,
+					"signatureAlgorithm": "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256",
+					"digestAlgorithm": "http://www.w3.org/2001/04/xmlenc#sha256",
+					"rejectUnsolicitedResponsesWithInResponseTo": False,
+				},
+			}
+		)

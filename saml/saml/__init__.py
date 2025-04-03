@@ -1,33 +1,40 @@
 # Copyright (c) 2025, AgriTheory and contributors
 # For license information, please see license.txt
 
+from urllib.parse import urlparse
+
 import frappe
 from frappe import _
-from onelogin.saml2.auth import OneLogin_Saml2_Auth, OneLogin_Saml2_Settings
+from frappe.utils import get_url
+from onelogin.saml2.auth import (
+	OneLogin_Saml2_Auth,
+	OneLogin_Saml2_Settings,
+)
+from onelogin.saml2.constants import OneLogin_Saml2_Constants
+from onelogin.saml2.idp_metadata_parser import OneLogin_Saml2_IdPMetadataParser
+
+from saml.saml.doctype.saml_login_key.saml_login_key import SAMLLoginKey
 
 
 @frappe.whitelist(allow_guest=True)
 def login(provider):
-	saml_key = frappe.get_doc("SAML Login Key", provider)
-	saml_settings = saml_key.get_settings(
-		frappe.utils.get_url(f"/api/method/saml.saml.acs?provider={provider}")
-	)
-	client = OneLogin_Saml2_Auth(get_request_data(provider), saml_settings)
+	saml_key: SAMLLoginKey = frappe.get_doc("SAML Login Key", provider)
+	acs_url = get_url(f"/api/method/saml.saml.acs?provider={provider}")
+	saml_settings = saml_key.get_settings(acs_url)
+	auth = OneLogin_Saml2_Auth(get_request_data(provider), saml_settings)
 	redirect_location = frappe.local.request.args.get("redirect-to", "")
-	redirect_url = client.login(return_to=redirect_location)
+	redirect_url = auth.login(return_to=redirect_location)
 	frappe.local.response["type"] = "redirect"
 	frappe.local.response["location"] = redirect_url
 
 
 def get_request_data(provider):
-	request_data = {
+	return {
 		"http_host": frappe.local.request.host,
-		"server_port": frappe.local.request.environ.get("SERVER_PORT"),
-		"script_name": frappe.utils.get_url(f"/api/method/saml.saml.acs?provider={provider}"),
+		"script_name": get_url(f"/api/method/saml.saml.acs?provider={provider}"),
 		"query_string": frappe.local.request.environ.get("QUERY_STRING"),
 		"https": "on" if frappe.local.request.scheme == "https" else "off",
 	}
-	return request_data
 
 
 @frappe.whitelist(allow_guest=True)
@@ -44,34 +51,15 @@ def acs():
 			"https": "on" if frappe.local.request.scheme == "https" else "off",
 		}
 
-		saml_key = frappe.get_doc("SAML Login Key", query_data.get("provider"))
-		saml_settings = OneLogin_Saml2_Settings(
-			{
-				"sp": {
-					"entityId": saml_key.sp_entity_id,
-					"assertionConsumerService": {
-						"url": frappe.utils.get_url("/api/method/saml.saml.acs"),
-						"binding": "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST",
-					},
-					"signatureAlgorithm": "RSA_SHA256",
-				},
-				"idp": {
-					"entityId": saml_key.idp_entity_id,
-					"singleSignOnService": {
-						"url": saml_key.idp_sso_url,
-						"binding": "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect",
-					},
-					"x509cert": saml_key.idp_x509cert,
-				},
-			}
-		)
+		saml_key: SAMLLoginKey = frappe.get_doc("SAML Login Key", query_data.get("provider"))
+		saml_settings = saml_key.get_settings(get_url("/api/method/saml.saml.acs"))
 
-		client = OneLogin_Saml2_Auth(request_data, saml_settings)
-		client.process_response()
+		auth = OneLogin_Saml2_Auth(request_data, saml_settings)
+		auth.process_response()
 
-		errors = client.get_errors()
+		errors = auth.get_errors()
 		if errors:
-			error_reason = client.get_last_error_reason()
+			error_reason = auth.get_last_error_reason()
 			frappe.respond_as_web_page(
 				_("SAML Login Failed"),
 				_(f"Invalid SAML response: {error_reason}"),
@@ -79,15 +67,15 @@ def acs():
 			)
 			return
 
-		if not client.is_authenticated():
+		if not auth.is_authenticated():
 			frappe.respond_as_web_page(
 				_("SAML Login Failed"), _("User not authenticated"), http_status_code=403
 			)
 			return
 
 		# Get user details
-		friendly_name = client.get_friendlyname_attributes()
-		attributes = client.get_attributes()
+		friendly_name = auth.get_friendlyname_attributes()
+		attributes = auth.get_attributes()
 		if friendly_name:
 			first_name = friendly_name.get("givenName", [None])[0]
 			last_name = friendly_name.get("surname", [None])[0]
@@ -97,7 +85,7 @@ def acs():
 		else:
 			first_name = last_name = None
 
-		user_email = client.get_nameid()
+		user_email = auth.get_nameid()
 		if not user_email:
 			frappe.respond_as_web_page(
 				_("SAML Login Failed"), _("Email not found in SAML response"), http_status_code=403
@@ -160,9 +148,13 @@ def acs():
 		# Log the user in
 		frappe.local.login_manager.user = user.name
 		frappe.local.login_manager.post_login()
-		frappe.session.saml_provider = saml_key
-		if session_index := client.get_session_index():
-			frappe.session.saml_session_index = session_index
+
+		# Set session variables
+		saml_session = {"provider": saml_key.name}
+		if session_index := auth.get_session_index():
+			saml_session.update({"session_index": session_index})
+		frappe.local.session.data.saml = saml_session
+
 		frappe.db.commit()
 		redirect_to = post_data.get("RelayState")
 
@@ -170,21 +162,65 @@ def acs():
 		if not redirect_to:
 			redirect_to = "/me" if user.user_type == "Website User" else "/app"
 		frappe.local.response["type"] = "redirect"
-		frappe.local.response["location"] = frappe.utils.get_url(redirect_to)
+		frappe.local.response["location"] = get_url(redirect_to)
 
 	except Exception as e:
 		frappe.log_error(frappe.get_traceback(), _("SAML Login Error"))
 		frappe.respond_as_web_page(_("SAML Login Failed"), frappe.get_traceback(), http_status_code=500)
 
 
-def logout(login_manager):
+def logout(login_manager=None):
 	"""Handle SAML logout when user logs out of Frappe"""
-	# Check if user was logged in via SAML
-	if frappe.session.get("saml_provider"):
-		provider = frappe.session.get("saml_provider")
-		logout_result = frappe.call("saml.saml.logout", provider=provider)
+	saml_session = frappe.local.session.data.saml
+	if not saml_session or not saml_session.get("provider"):
+		return
 
-		# If successful and a logout URL was provided, redirect to it
-		if logout_result.get("success") and logout_result.get("logout_url"):
-			frappe.local.response["type"] = "redirect"
-			frappe.local.response["location"] = logout_result.get("logout_url")
+	provider = saml_session.get("provider")
+	saml_key: SAMLLoginKey = frappe.get_doc("SAML Login Key", provider)
+	if not saml_key.terminate_saml_session_on_logout:
+		return
+
+	acs_url = get_url(f"/api/method/saml.saml.acs?provider={provider}")
+	slo_url = get_url(f"/api/method/saml.saml.slo?provider={provider}")
+
+	saml_settings = saml_key.get_settings(acs_url)
+	idp_slo_url = saml_settings.get_idp_slo_url()
+	parsed_slo_url = urlparse(idp_slo_url)
+	request_data = {
+		"https": "on" if parsed_slo_url.scheme == "https" else "off",
+		"http_host": parsed_slo_url.netloc,
+		"script_name": parsed_slo_url.path,
+	}
+
+	metadata = OneLogin_Saml2_IdPMetadataParser.parse_remote(f"{saml_key.idp_sso_url}/descriptor")
+	settings = OneLogin_Saml2_Settings(
+		{
+			"sp": {
+				**metadata.get("sp", {}),
+				"entityId": saml_key.sp_entity_id,
+				"assertionConsumerService": {
+					"url": acs_url,
+					"binding": OneLogin_Saml2_Constants.BINDING_HTTP_POST,
+				},
+				"singleLogoutService": {
+					"url": slo_url,
+					"binding": OneLogin_Saml2_Constants.BINDING_HTTP_POST,
+				},
+				"privateKey": saml_key.get_password("sp_private_key"),
+				"x509cert": saml_key.sp_x509cert,
+			},
+			"idp": metadata.get("idp", {}),
+		}
+	)
+
+	auth = OneLogin_Saml2_Auth(request_data, settings)
+	logout_url = auth.logout(
+		return_to=get_url(), name_id=frappe.session.user, session_index=saml_session.get("session_index")
+	)
+	frappe.local.response["type"] = "redirect"
+	frappe.local.response["location"] = get_url(logout_url)
+
+
+@frappe.whitelist(allow_guest=True)
+def slo(*args, **kwargs):
+	pass

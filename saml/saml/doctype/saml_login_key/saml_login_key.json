@@ -12,13 +12,15 @@
 		"terminate_saml_session_on_logout",
 		"sp_details_section",
 		"sp_entity_id",
-		"sp_x509cert",
 		"sp_private_key",
+		"column_break_wcyw",
+		"sp_x509cert",
 		"idp_details_section",
 		"idp_entity_id",
-		"idp_x509cert",
 		"idp_sso_url",
 		"idp_slo_url",
+		"column_break_jljk",
+		"idp_x509cert",
 		"mappings_section",
 		"roles"
 	],
@@ -39,46 +41,47 @@
 		{
 			"fieldname": "sp_entity_id",
 			"fieldtype": "Data",
-			"label": "Service Provider Entity ID"
+			"label": "Entity ID"
 		},
 		{
+			"description": "URL where login requests should be sent to initiate the SAML session",
 			"fieldname": "idp_sso_url",
 			"fieldtype": "Data",
-			"label": "IDP SSO URL"
+			"label": "Single Sign-On URL"
 		},
 		{
 			"fieldname": "idp_entity_id",
 			"fieldtype": "Data",
-			"label": "IDP Entity ID"
+			"label": "Entity ID"
 		},
 		{
 			"fieldname": "idp_x509cert",
 			"fieldtype": "Text",
-			"label": "IDP x509cert"
+			"label": "Public X.509 certificate"
 		},
 		{
 			"fieldname": "sp_x509cert",
-			"fieldtype": "Small Text",
-			"label": "Service Provider x509cert"
+			"fieldtype": "Text",
+			"label": "Public X.509 certificate"
 		},
 		{
 			"collapsible": 1,
 			"depends_on": "eval:doc.enable_saml_login",
 			"fieldname": "sp_details_section",
 			"fieldtype": "Section Break",
-			"label": "Service Provider Details"
+			"label": "Service Provider"
 		},
 		{
 			"collapsible": 1,
 			"depends_on": "eval:doc.enable_saml_login",
 			"fieldname": "idp_details_section",
 			"fieldtype": "Section Break",
-			"label": "IDP Details"
+			"label": "Identity Provider"
 		},
 		{
 			"fieldname": "sp_private_key",
 			"fieldtype": "Password",
-			"label": "Service Provider Private Key",
+			"label": "Private Key",
 			"length": 1600
 		},
 		{
@@ -116,15 +119,23 @@
 			"label": "Terminate SAML Session on logout"
 		},
 		{
+			"description": "URL where logout requests should be sent to terminate the SAML session",
 			"fieldname": "idp_slo_url",
 			"fieldtype": "Data",
-			"label": "IDP Single Logout URL",
-			"description": "URL where logout requests should be sent to terminate the SAML session"
+			"label": "Single Logout URL"
+		},
+		{
+			"fieldname": "column_break_wcyw",
+			"fieldtype": "Column Break"
+		},
+		{
+			"fieldname": "column_break_jljk",
+			"fieldtype": "Column Break"
 		}
 	],
 	"index_web_pages_for_search": 1,
 	"links": [],
-	"modified": "2025-03-26 09:30:52.294763",
+	"modified": "2025-04-02 03:05:16.486902",
 	"modified_by": "Administrator",
 	"module": "SAML",
 	"name": "SAML Login Key",
@@ -143,6 +154,7 @@
 			"write": 1
 		}
 	],
+	"row_format": "Dynamic",
 	"sort_field": "modified",
 	"sort_order": "DESC",
 	"states": [],

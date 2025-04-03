@@ -47,9 +47,27 @@
 	"roles": {
 		"realm": [
 			{
+				"id": "b3e9c4b3-4e3a-4774-b0f6-7c3a77e944b7",
+				"name": "Newsletter Manager",
+				"description": "",
+				"composite": false,
+				"clientRole": false,
+				"containerId": "9779947e-3a7d-446c-8b4f-54106988fec1",
+				"attributes": {}
+			},
+			{
 				"id": "99c792e7-47f5-49ee-945a-c4b00b6c1d3f",
 				"name": "uma_authorization",
 				"description": "${role_uma_authorization}",
+				"composite": false,
+				"clientRole": false,
+				"containerId": "9779947e-3a7d-446c-8b4f-54106988fec1",
+				"attributes": {}
+			},
+			{
+				"id": "d5b57513-04da-4a28-92bc-dc53a40c9dde",
+				"name": "Website Manager",
+				"description": "",
 				"composite": false,
 				"clientRole": false,
 				"containerId": "9779947e-3a7d-446c-8b4f-54106988fec1",
@@ -80,6 +98,15 @@
 				"attributes": {}
 			},
 			{
+				"id": "33e34ab2-93df-4e79-ba93-80dc43974f2c",
+				"name": "Knowledge Base Contributor",
+				"description": "",
+				"composite": false,
+				"clientRole": false,
+				"containerId": "9779947e-3a7d-446c-8b4f-54106988fec1",
+				"attributes": {}
+			},
+			{
 				"id": "4a093609-be52-4654-afd6-f63bda69dbcf",
 				"name": "offline_access",
 				"description": "${role_offline-access}",
@@ -89,8 +116,17 @@
 				"attributes": {}
 			},
 			{
-				"id": "0e5a2c0e-8b8d-44c2-b1ee-a309c337d0c2",
-				"name": "Knowledge Base",
+				"id": "a215023b-0256-4833-b2ea-e43e4629c660",
+				"name": "Blogger",
+				"description": "",
+				"composite": false,
+				"clientRole": false,
+				"containerId": "9779947e-3a7d-446c-8b4f-54106988fec1",
+				"attributes": {}
+			},
+			{
+				"id": "1bba5fab-d413-46dd-bc4a-ec74ef8ccbe9",
+				"name": "Knowledge Base Editor",
 				"description": "",
 				"composite": false,
 				"clientRole": false,
@@ -407,7 +443,23 @@
 			]
 		}
 	},
-	"groups": [],
+	"groups": [
+		{
+			"id": "ef05c914-1d53-43a9-8668-b1c5bba69270",
+			"name": "Knowledge Base",
+			"path": "/Knowledge Base",
+			"subGroups": [],
+			"attributes": {},
+			"realmRoles": [
+				"Newsletter Manager",
+				"Website Manager",
+				"Knowledge Base Contributor",
+				"Blogger",
+				"Knowledge Base Editor"
+			],
+			"clientRoles": {}
+		}
+	],
 	"defaultRole": {
 		"id": "57a75edc-79da-4e04-b7fc-f87b55c8dc11",
 		"name": "default-roles-frappe",
@@ -612,11 +664,12 @@
 			"directAccessGrantsEnabled": true,
 			"serviceAccountsEnabled": false,
 			"publicClient": true,
-			"frontchannelLogout": true,
+			"frontchannelLogout": false,
 			"protocol": "saml",
 			"attributes": {
 				"saml.assertion.signature": "true",
 				"saml.force.post.binding": "false",
+				"post.logout.redirect.uris": "+##http://localhost:8080/*",
 				"saml.server.signature": "true",
 				"saml.server.signature.keyinfo.ext": "false",
 				"saml.signing.certificate": "MIICpTCCAY0CBgGVsxUaQzANBgkqhkiG9w0BAQsFADAWMRQwEgYDVQQDDAtmcmFwcGUtc2FtbDAeFw0yNTAzMjAxMDIyMzlaFw0zNTAzMjAxMDI0MTlaMBYxFDASBgNVBAMMC2ZyYXBwZS1zYW1sMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAz2YMcvKqgZ1Bgd1JfkQ43AcNG8kQ9TdkNyZEs6x6rXQbebWF6sd/MBKIwba2MExWhhG6WETY2bqxz8rrsnFGKmIxXbr1MFBPCkTaHqHIv1xjHCzCGOj2bkuzmUfVsjJR2AUmwN4iz0QhIc9Ay5ODVjkglLOQCRoNYsTnTB/V13n3Op+fGPkl/sfBO4I7XjuGqz4vqfUqx3OOq+EGpL96c9Rk2kv8p/Ikb0P/0cTPkAsEvrA0JECRAQnTpGpmKtxFQEPLWH1dVy+sak0GsVu6OVDrwLKq1Q5Tj1hnUidCko64RwGrTbsVfwJvfh+baM8/sw/JnLAhb9Ki/P2rUu5VHwIDAQABMA0GCSqGSIb3DQEBCwUAA4IBAQBgZe4oqaCW10NGDLUr0SiYXPPYaNUYWvEASi8P7PDv24h4I9l/V8RP9j1LmqgCuEdn1yxBiL+SHiM9pH6BfC7CNL4zsCjVBQgnQPGu9RK/C6s+fMAOJloGIQeb+qLQLG0pvjFWl+6nGTWLGzlzRih8X3QiAC2tzI8ZcVlrj7lXOJ4ENNoYcKCg/DBOoDgnFm7aRuaTaUIn2z7tfSYLShuB2urTgOn5wUj+LbkY+ZPoAtIubz38XGmxdZesiJGLN+NBcSmB8chjXp/ASUQmp8BFIWgahMDkFHZDMBmEhfEuDwOdT11M8eIH+ko8sN/oSICHE0gb9tDeQ0+oAjjN89fF",

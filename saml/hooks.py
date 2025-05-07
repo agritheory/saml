@@ -103,13 +103,12 @@ app_license = "MIT"
 # ---------------
 # Hook on document methods and events
 
-# doc_events = {
-# 	"*": {
-# 		"on_update": "method",
-# 		"on_cancel": "method",
-# 		"on_trash": "method"
-# 	}
-# }
+doc_events = {
+	"User": {
+		"validate": "saml.overrides.user.validate_reset_password",
+		"validate_reset_password": "saml.overrides.user.validate_reset_password",
+	}
+}
 
 # Scheduled Tasks
 # ---------------

@@ -10,6 +10,7 @@
 		"apply_saml_roles",
 		"match_saml_roles",
 		"terminate_saml_session_on_logout",
+		"disallow_password_update",
 		"sp_details_section",
 		"sp_entity_id",
 		"sp_x509cert",
@@ -113,11 +114,18 @@
 			"fieldname": "terminate_saml_session_on_logout",
 			"fieldtype": "Check",
 			"label": "Terminate SAML Session on logout"
+		},
+		{
+			"default": "0",
+			"description": "Prevent SAML-managed users from setting or resetting their Frappe password",
+			"fieldname": "disallow_password_update",
+			"fieldtype": "Check",
+			"label": "Disallow Password Set/Reset"
 		}
 	],
 	"index_web_pages_for_search": 1,
 	"links": [],
-	"modified": "2025-03-26 09:30:52.294763",
+	"modified": "2025-05-07 05:37:18.206268",
 	"modified_by": "Administrator",
 	"module": "SAML",
 	"name": "SAML Login Key",
@@ -136,6 +144,7 @@
 			"write": 1
 		}
 	],
+	"row_format": "Dynamic",
 	"sort_field": "modified",
 	"sort_order": "DESC",
 	"states": [],

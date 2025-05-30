@@ -17,7 +17,7 @@ app_license = "MIT"
 
 # include js, css files in header of web template
 # web_include_css = "/assets/saml/css/saml.css"
-# web_include_js = "/assets/saml/js/saml.js"
+web_include_js = ["saml.bundle.js"]
 
 # include custom scss in every website theme (without file extension ".scss")
 # website_theme_scss = "saml/public/scss/website"
@@ -197,3 +197,5 @@ doc_events = {
 # --------------------------------
 
 # auth_hooks = ["saml.auth.authenticate"]
+
+export_python_type_annotations = True

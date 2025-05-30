@@ -15,16 +15,30 @@ class SAMLLoginKey(Document):
 
 	if TYPE_CHECKING:
 		from frappe.types import DF
+		from saml.saml.doctype.saml_group_mapping.saml_group_mapping import SAMLGroupMapping
 
+		apply_saml_roles: DF.Check
+		disallow_password_update: DF.Check
 		enable_saml_login: DF.Check
 		idp_entity_id: DF.Data | None
 		idp_sso_url: DF.Data | None
 		idp_x509cert: DF.Text | None
+		match_saml_roles: DF.Check
 		provider_name: DF.Data
+		roles: DF.Table[SAMLGroupMapping]
+		saml_domains: DF.Text | None
 		sp_entity_id: DF.Data | None
 		sp_private_key: DF.Password | None
 		sp_x509cert: DF.SmallText | None
+		terminate_saml_session_on_logout: DF.Check
 	# end: auto-generated types
+
+	@property
+	def domains(self):
+		"""Return the domains as a list."""
+		if self.saml_domains:
+			return self.saml_domains.split("\n")
+		return []
 
 	def autoname(self):
 		self.name = frappe.scrub(self.provider_name)
@@ -74,3 +88,14 @@ class SAMLLoginKey(Document):
 				},
 			}
 		)
+
+
+@frappe.whitelist(allow_guest=True)
+def get_saml_domains():
+	domains = []
+	for key in frappe.get_all(
+		"SAML Login Key", filters={"enable_saml_login": True}, pluck="name"
+	):
+		saml_key: SAMLLoginKey = frappe.get_doc("SAML Login Key", key)
+		domains.extend(saml_key.domains)
+	return domains

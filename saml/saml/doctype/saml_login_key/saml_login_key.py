@@ -69,7 +69,7 @@ class SAMLLoginKey(Document):
 						"url": acs_url,
 						"binding": "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST",
 					},
-					"privateKey": self.get_password("sp_private_key"),
+					"privateKey": self.get_password("sp_private_key") if self.sp_private_key else "",
 					"x509cert": self.sp_x509cert,
 				},
 				"idp": {
@@ -81,7 +81,7 @@ class SAMLLoginKey(Document):
 					"x509cert": self.idp_x509cert,
 				},
 				"security": {
-					"authnRequestsSigned": True,
+					"authnRequestsSigned": False,
 					"signatureAlgorithm": "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256",
 					"digestAlgorithm": "http://www.w3.org/2001/04/xmlenc#sha256",
 					"rejectUnsolicitedResponsesWithInResponseTo": False,

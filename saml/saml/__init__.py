@@ -1,10 +1,15 @@
 # Copyright (c) 2025, AgriTheory and contributors
 # For license information, please see license.txt
 
+import base64
+import xml.etree.ElementTree as ET
+from urllib.parse import parse_qs, urlparse
+
+from onelogin.saml2.auth import OneLogin_Saml2_Auth, OneLogin_Saml2_Settings
+
 import frappe
 from frappe import _
 from frappe.utils.password import remove_encrypted_password
-from onelogin.saml2.auth import OneLogin_Saml2_Auth, OneLogin_Saml2_Settings
 
 
 @frappe.whitelist(allow_guest=True)
@@ -21,6 +26,11 @@ def login(provider):
 
 
 def get_request_data(provider):
+	https_on = not frappe.conf.get("developer_mode", False)
+	host = frappe.conf.get("host_name", frappe.local.request.host)
+	if host.startswith("https://") or host.startswith("http://"):
+		host = host.split("://", 1)[1]  # Remove protocol if present
+
 	request_data = {
 		"http_host": frappe.local.request.host,
 		"server_port": frappe.local.request.environ.get("SERVER_PORT"),
@@ -37,6 +47,45 @@ def acs():
 		# Handle the SAML response
 		post_data = dict(frappe.request.form.copy())
 		query_data = dict(frappe.request.args.copy())
+		provider = query_data.get("provider")
+		if not provider:
+			parsed_url = urlparse(frappe.local.request.url)
+			query_params = parse_qs(parsed_url.query)
+			provider = query_params.get("provider", [None])[0]
+
+		if not provider:
+			provider = determine_provider_from_saml_response(post_data.get("SAMLResponse"))
+
+		if not provider:
+			enabled_providers = frappe.get_all(
+				"SAML Login Key", filters={"enable_saml_login": 1}, pluck="name"
+			)
+
+			if len(enabled_providers) == 1:
+				provider = enabled_providers[0]
+			elif len(enabled_providers) > 1:
+				frappe.respond_as_web_page(
+					_("SAML Login Failed"),
+					_("Cannot determine SAML provider - multiple providers configured"),
+					http_status_code=400,
+				)
+				return
+			else:
+				frappe.respond_as_web_page(
+					_("SAML Login Failed"), _("No SAML providers configured"), http_status_code=400
+				)
+				return
+
+		if not provider:
+			frappe.respond_as_web_page(
+				_("SAML Login Failed"), _("Cannot determine SAML provider"), http_status_code=400
+			)
+			return
+
+		host = frappe.conf.get("host_name", frappe.local.request.host)
+		if host.startswith("https://") or host.startswith("http://"):
+			host = host.split("://", 1)[1]
+
 		request_data = {
 			"http_host": frappe.local.request.host,
 			"server_port": frappe.local.request.environ.get("SERVER_PORT"),
@@ -129,10 +178,8 @@ def acs():
 			if not user.saml_managed:
 				user.saml_managed = True
 				user.save(ignore_permissions=True)
-				# remove existing password for user, if any
 				remove_encrypted_password("User", user.name, "password")
 
-		# Map SAML roles to Role and Role Profile
 		if saml_key.apply_saml_roles:
 			roles = attributes.get("Role", [])
 			roles_to_apply = []
@@ -180,3 +227,32 @@ def acs():
 	except Exception as e:
 		frappe.log_error(frappe.get_traceback(), _("SAML Login Error"))
 		frappe.respond_as_web_page(_("SAML Login Failed"), frappe.get_traceback(), http_status_code=500)
+
+
+def determine_provider_from_saml_response(saml_response):
+	"""
+	Try to determine the provider by matching the SAML response issuer
+	with configured IDP Entity IDs
+	"""
+	if not saml_response:
+		return None
+
+	try:
+		decoded_response = base64.b64decode(saml_response)
+		root = ET.fromstring(decoded_response)
+
+		issuer_elem = root.find(".//{urn:oasis:names:tc:SAML:2.0:assertion}Issuer")
+		if issuer_elem is not None:
+			issuer = issuer_elem.text
+
+			provider = frappe.db.get_value(
+				"SAML Login Key", {"idp_entity_id": issuer, "enable_saml_login": 1}, "name"
+			)
+
+			if provider:
+				return provider
+
+	except Exception:
+		pass
+
+	return None

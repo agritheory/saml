@@ -91,6 +91,7 @@
 			"label": "Mappings"
 		},
 		{
+			"allow_bulk_edit": 1,
 			"fieldname": "roles",
 			"fieldtype": "Table",
 			"label": "SAML Role Mappings",

@@ -3,13 +3,12 @@
 
 import base64
 import xml.etree.ElementTree as ET
-from urllib.parse import parse_qs, urlparse
-
-from onelogin.saml2.auth import OneLogin_Saml2_Auth, OneLogin_Saml2_Settings
 
 import frappe
 from frappe import _
 from frappe.utils.password import remove_encrypted_password
+from onelogin.saml2.auth import OneLogin_Saml2_Auth, OneLogin_Saml2_Settings
+from urllib.parse import parse_qs, urlparse
 
 
 @frappe.whitelist(allow_guest=True)
@@ -27,24 +26,30 @@ def login(provider):
 
 def get_request_data(provider):
 	https_on = not frappe.conf.get("developer_mode", False)
+
+	# Use configured host_name instead of request host for proxied environments
 	host = frappe.conf.get("host_name", frappe.local.request.host)
 	if host.startswith("https://") or host.startswith("http://"):
 		host = host.split("://", 1)[1]  # Remove protocol if present
 
 	request_data = {
-		"http_host": frappe.local.request.host,
-		"server_port": frappe.local.request.environ.get("SERVER_PORT"),
-		"script_name": frappe.utils.get_url(f"/api/method/saml.saml.acs?provider={provider}"),
+		"http_host": host,
+		"script_name": f"/api/method/saml.saml.acs?provider={provider}",
 		"query_string": frappe.local.request.environ.get("QUERY_STRING"),
-		"https": "on" if frappe.local.request.scheme == "https" else "off",
+		"https": "on" if https_on else "off",
 	}
+
+	# Only add server_port in developer mode
+	if frappe.conf.get("developer_mode", False):
+		request_data["server_port"] = frappe.local.request.environ.get("SERVER_PORT")
+
 	return request_data
 
 
 @frappe.whitelist(allow_guest=True)
 def acs():
+	https_on = not frappe.conf.get("developer_mode", False)
 	try:
-		# Handle the SAML response
 		post_data = dict(frappe.request.form.copy())
 		query_data = dict(frappe.request.args.copy())
 		provider = query_data.get("provider")
@@ -87,20 +92,28 @@ def acs():
 			host = host.split("://", 1)[1]
 
 		request_data = {
-			"http_host": frappe.local.request.host,
-			"server_port": frappe.local.request.environ.get("SERVER_PORT"),
+			"http_host": host,
 			"script_name": frappe.local.request.environ.get("PATH_INFO"),
 			"post_data": post_data,
-			"https": "on" if frappe.local.request.scheme == "https" else "off",
+			"https": "on" if https_on else "off",
 		}
 
-		saml_key = frappe.get_doc("SAML Login Key", query_data.get("provider"))
+		if frappe.conf.get("developer_mode", False):
+			request_data["server_port"] = frappe.local.request.environ.get("SERVER_PORT")
+
+		saml_key = frappe.get_doc("SAML Login Key", provider)
+
+		if https_on:
+			acs_url = f"https://{host}/api/method/saml.saml.acs"
+		else:
+			acs_url = f"http://{host}/api/method/saml.saml.acs"
+
 		saml_settings = OneLogin_Saml2_Settings(
 			{
 				"sp": {
 					"entityId": saml_key.sp_entity_id,
 					"assertionConsumerService": {
-						"url": frappe.utils.get_url("/api/method/saml.saml.acs"),
+						"url": acs_url,
 						"binding": "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST",
 					},
 					"signatureAlgorithm": "RSA_SHA256",
@@ -135,7 +148,6 @@ def acs():
 			)
 			return
 
-		# Get user details
 		friendly_name = client.get_friendlyname_attributes()
 		attributes = client.get_attributes()
 		if friendly_name:
@@ -196,7 +208,6 @@ def acs():
 								user.save(ignore_permissions=True)
 								break
 						else:
-							# reset role profile
 							if user.role_profile_name:
 								user.roles = []
 								user.role_profile_name = ""
@@ -218,7 +229,6 @@ def acs():
 		frappe.db.commit()
 		redirect_to = post_data.get("RelayState")
 
-		# Default to /me for website users or /app for desk users
 		if not redirect_to:
 			redirect_to = "/me" if user.user_type == "Website User" else "/app"
 		frappe.local.response["type"] = "redirect"
@@ -230,17 +240,12 @@ def acs():
 
 
 def determine_provider_from_saml_response(saml_response):
-	"""
-	Try to determine the provider by matching the SAML response issuer
-	with configured IDP Entity IDs
-	"""
 	if not saml_response:
 		return None
 
 	try:
 		decoded_response = base64.b64decode(saml_response)
 		root = ET.fromstring(decoded_response)
-
 		issuer_elem = root.find(".//{urn:oasis:names:tc:SAML:2.0:assertion}Issuer")
 		if issuer_elem is not None:
 			issuer = issuer_elem.text

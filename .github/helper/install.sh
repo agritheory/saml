@@ -32,6 +32,7 @@ bench pip install pytest pytest-cov
 bench pip install --force-reinstall --no-binary lxml lxml # reinstall lxml; ref: https://github.com/SAML-Toolkits/python3-saml#note
 
 bench get-app saml "${GITHUB_WORKSPACE}" --skip-assets
+bench pip install --no-binary=lxml --no-binary=xmlsec lxml==4.9.3 xmlsec==1.3.15
 bench setup requirements --dev
 bench use test_site
 bench --site test_site reinstall --yes --admin-password admin

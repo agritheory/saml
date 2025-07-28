@@ -7,4 +7,4 @@ if grep -lr --exclude-dir=node_modules "^<<<<<<< " $GITHUB_WORKSPACE
     exit 1
 fi
 
-sudo apt update -y && sudo apt install pkg-config libxml2-dev libxmlsec1-dev libxmlsec1-openssl redis-server libcups2-dev mariadb-client -y
+sudo apt update -y && sudo apt install libxml2-dev libxslt-dev python3-dev pkg-config libxmlsec1-dev libxmlsec1-openssl redis-server mariadb-client -y

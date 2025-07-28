@@ -93,9 +93,7 @@ class SAMLLoginKey(Document):
 @frappe.whitelist(allow_guest=True)
 def get_saml_domains():
 	domains = []
-	for key in frappe.get_all(
-		"SAML Login Key", filters={"enable_saml_login": True}, pluck="name"
-	):
+	for key in frappe.get_all("SAML Login Key", filters={"enable_saml_login": True}, pluck="name"):
 		saml_key: SAMLLoginKey = frappe.get_doc("SAML Login Key", key)
 		domains.extend(saml_key.domains)
 	return domains

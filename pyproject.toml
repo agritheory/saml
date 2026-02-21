@@ -5,7 +5,7 @@ authors = [{ name = "AgriTheory", email = "support@agritheory.dev" }]
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
-dynamic = ["version"]
+dynamic = ["version", "dependencies"]
 
 [project.urls]
 homepage = "https://github.com/agritheory/saml"
@@ -70,6 +70,9 @@ exclude_also = [
     "class .*\\bProtocol\\):",
     "@(abc\\.)?abstractmethod",
 ]
+
+[tool.bench.frappe-dependencies]
+frappe = ">=15.0.0,<16.0.0"
 
 [tool.semantic_release]
 version_toml = ["pyproject.toml:tool.poetry.version"]

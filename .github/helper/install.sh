@@ -28,12 +28,12 @@ sed -i 's/schedule:/# schedule:/g' Procfile
 sed -i 's/socketio:/# socketio:/g' Procfile
 sed -i 's/redis_socketio:/# redis_socketio:/g' Procfile
 
-bench pip install pytest pytest-cov
-bench pip install --force-reinstall --no-binary lxml lxml # reinstall lxml; ref: https://github.com/SAML-Toolkits/python3-saml#note
-
 bench get-app saml "${GITHUB_WORKSPACE}" --skip-assets
-bench pip install --no-binary=lxml --no-binary=xmlsec lxml==4.9.3 xmlsec==1.3.15
+bench setup requirements --python
 bench setup requirements --dev
+# Ensure lxml links to same libxml2 as xmlsec (https://lxml.de/installation.html). python3-lxml in
+# install_dependencies.sh is primary fix; this fallback avoids mismatch if bench venv doesn't see it.
+bench pip install --force-reinstall lxml
 bench use test_site
 bench --site test_site reinstall --yes --admin-password admin
 

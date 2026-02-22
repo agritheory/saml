@@ -74,6 +74,10 @@ exclude_also = [
 [tool.bench.frappe-dependencies]
 frappe = ">=15.0.0,<16.0.0"
 
+[tool.bench.dev-dependencies]
+pytest = "~=8.3.5"
+pytest-cov = "~=6.0.0"
+
 [tool.semantic_release]
 version_toml = ["pyproject.toml:tool.poetry.version"]
 version_variable = ["saml/__init__.py:__version__"]

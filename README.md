@@ -110,11 +110,10 @@ bench get-app saml
 bench --site {{ site name }} install-app saml
 ```
 
-NOTE: If you get a version mismatch error for the `libxml2` package between `lxml` and `xmlsec`, you should refer to the upstream [note](https://github.com/SAML-Toolkits/python3-saml#note) for resolving it. If you see the error, run the following command:
+NOTE: If you get `xmlsec.InternalError: (-1, 'lxml & xmlsec libxml2 library version mismatch')`, ensure lxml and xmlsec use the same libxml2:
 
-```
-bench pip install --force-reinstall --no-binary lxml --no-binary xmlsec lxml xmlsec
-```
+- **Linux (recommended):** `sudo apt-get install python3-lxml` per [lxml installation docs](https://lxml.de/installation.html)
+- **Fallback:** `bench pip install --force-reinstall lxml` (avoid `--no-binary lxml` as it can timeout on slower systems)
 
 In a new terminal window
 

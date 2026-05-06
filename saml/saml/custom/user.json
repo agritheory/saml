@@ -6,9 +6,7 @@
 			"bold": 0,
 			"collapsible": 0,
 			"columns": 0,
-			"creation": "2025-05-07 05:40:46.623010",
 			"default": null,
-			"docstatus": 0,
 			"dt": "User",
 			"fetch_if_empty": 0,
 			"fieldname": "saml_managed",
@@ -29,15 +27,11 @@
 			"is_virtual": 0,
 			"label": "SAML Managed",
 			"length": 0,
-			"modified": "2025-05-07 05:40:46.623010",
-			"modified_by": "Administrator",
 			"module": "SAML",
 			"name": "User-saml_managed",
 			"no_copy": 0,
 			"non_negative": 0,
-			"owner": "Administrator",
 			"permlevel": 0,
-			"precision": "",
 			"print_hide": 0,
 			"print_hide_if_no_value": 0,
 			"read_only": 1,
@@ -50,9 +44,7 @@
 			"unique": 0
 		}
 	],
-	"custom_perms": [],
 	"doctype": "User",
-	"links": [],
 	"property_setters": [],
 	"sync_on_migrate": 1
 }

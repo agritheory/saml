@@ -80,11 +80,11 @@ SAML2 Login for Frappe apps
 
 ## Install Instructions
 
-Set up a new bench, substitute a path to the python version to use, which should 3.10 latest
+Set up a new bench, substitute a path to the python version to use, which should 3.13 latest
 
 ```
 # for linux development
-bench init --frappe-branch version-15 {{ bench name }} --python ~/.pyenv/versions/3.10.4/bin/python3
+bench init --frappe-branch version-16 {{ bench name }} --python ~/.pyenv/versions/3.13/bin/python3
 ```
 
 Create a new site in that bench

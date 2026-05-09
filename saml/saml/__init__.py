@@ -30,7 +30,10 @@ def get_request_data(provider):
 	# Use configured host_name instead of request host for proxied environments
 	host = frappe.conf.get("host_name", frappe.local.request.host)
 	if host.startswith("https://") or host.startswith("http://"):
-		host = host.split("://", 1)[1]  # Remove protocol if present
+		host = host.split("://", 1)[1]
+
+	if not frappe.conf.get("developer_mode", False):
+		host = host.split(":")[0]
 
 	request_data = {
 		"http_host": host,
@@ -90,6 +93,9 @@ def acs():
 		host = frappe.conf.get("host_name", frappe.local.request.host)
 		if host.startswith("https://") or host.startswith("http://"):
 			host = host.split("://", 1)[1]
+
+		if not frappe.conf.get("developer_mode", False):
+			host = host.split(":")[0]
 
 		request_data = {
 			"http_host": host,

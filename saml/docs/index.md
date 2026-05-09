@@ -3,6 +3,11 @@ For license information, please see license.txt-->
 
 # SAML Integration
 
+<div class="byline">
+  Tyler Matteson 2026-05-06
+</div>
+
+
 The SAML (Security Assertion Markup Language) integration for Frappe enables secure single sign-on (SSO) authentication between your Frappe application and your organization's Identity Provider (IdP). When a user attempts to access your Frappe application, the following authentication flow occurs:
 
 1. The user tries to access a protected page or clicks on the SAML login button.
@@ -43,6 +48,8 @@ When configuring your Identity Provider, you'll need to provide:
 - Your Entity ID
 - Assertion Consumer Service (ACS) URL: `https://your-site.com/api/method/saml.saml.acs?provider=your_provider_name`
 - The SP x509 certificate for signature verification
+
+> **Note on ports:** In production (`developer_mode` disabled), port numbers are automatically stripped from the host when constructing the ACS URL and SAML request data, so your IdP configuration should use a standard HTTPS URL without a port. In developer mode (`developer_mode = 1`), the port is preserved in the host and also passed as `server_port` in the SAML request, allowing the library to construct correct URLs for non-standard ports such as `http://localhost:8000`.
 
 ### Identity Provider (IdP) Configuration
 

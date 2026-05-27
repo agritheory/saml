@@ -13,9 +13,14 @@ def modify_realm_urls(realm_data: dict[str, Any], base_url: str) -> dict[str, An
 			if client.get("clientId") == "frappe-saml":
 				print(f"Found frappe-saml client, updating URLs to {base_url}")
 
+				acs_path = "/api/method/saml.saml.acs"
 				client["rootUrl"] = base_url
 				client["baseUrl"] = base_url
-				client["redirectUris"] = [f"{base_url}/*"]
+				client["redirectUris"] = [
+					f"{base_url}/*",
+					f"{base_url}{acs_path}",
+					f"{base_url}{acs_path}?provider=keycloak",
+				]
 				client["webOrigins"] = [base_url]
 	return modified_data
 

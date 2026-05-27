@@ -67,6 +67,12 @@ jobs:
           bench --site test_site set-config allow_tests true
           bench --site test_site run-tests --app saml
 
+      - name: Start Keycloak
+        working-directory: ${{ github.workspace }}/saml/saml/tests
+        run: |
+          export BENCH_PORT=8000
+          ./keycloak.sh -d
+
       - name: Run Pytest Tests
         working-directory: /home/runner/frappe-bench
         run: |

@@ -2104,6 +2104,88 @@
 		"cibaInterval": "5",
 		"realmReusableOtpCode": "false"
 	},
+	"users": [
+		{
+			"username": "warehouse",
+			"email": "warehouse@ambrosiapieco.example",
+			"firstName": "Warehouse",
+			"lastName": "Manager",
+			"enabled": true,
+			"emailVerified": true,
+			"credentials": [
+				{
+					"type": "password",
+					"value": "apc-warehouse",
+					"temporary": false
+				}
+			],
+			"realmRoles": ["default-roles-frappe"]
+		},
+		{
+			"username": "kb.contributor",
+			"email": "kb.contributor@ambrosiapieco.example",
+			"firstName": "Knowledge",
+			"lastName": "Contributor",
+			"enabled": true,
+			"emailVerified": true,
+			"credentials": [
+				{
+					"type": "password",
+					"value": "apc-kb-contributor",
+					"temporary": false
+				}
+			],
+			"realmRoles": ["default-roles-frappe", "Knowledge Base"]
+		},
+		{
+			"username": "saml.existing",
+			"email": "saml.existing@ambrosiapieco.example",
+			"firstName": "SAML",
+			"lastName": "Existing",
+			"enabled": true,
+			"emailVerified": true,
+			"credentials": [
+				{
+					"type": "password",
+					"value": "apc-saml-existing",
+					"temporary": false
+				}
+			],
+			"realmRoles": ["default-roles-frappe"]
+		},
+		{
+			"username": "picker",
+			"email": "picker@ambrosiapieco.example",
+			"firstName": "Orchard",
+			"lastName": "Picker",
+			"enabled": true,
+			"emailVerified": true,
+			"credentials": [
+				{
+					"type": "password",
+					"value": "apc-picker",
+					"temporary": false
+				}
+			],
+			"realmRoles": ["default-roles-frappe"]
+		},
+		{
+			"username": "saml.admin",
+			"email": "saml.admin@ambrosiapieco.example",
+			"firstName": "SAML",
+			"lastName": "Admin",
+			"enabled": true,
+			"emailVerified": true,
+			"credentials": [
+				{
+					"type": "password",
+					"value": "apc-saml-admin",
+					"temporary": false
+				}
+			],
+			"realmRoles": ["default-roles-frappe", "System Administrator"]
+		}
+	],
 	"keycloakVersion": "24.0.1",
 	"userManagedAccessAllowed": false,
 	"clientProfiles": {

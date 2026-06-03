@@ -37,6 +37,36 @@ def before_test():
 def create_test_data():
 	create_role_profile()
 	create_saml_login_key()
+	create_test_users()
+
+
+def create_test_users():
+	if not frappe.db.exists("User", "warehouse@ambrosiapieco.example"):
+		user = frappe.new_doc("User")
+		user.update(
+			{
+				"email": "warehouse@ambrosiapieco.example",
+				"first_name": "Warehouse",
+				"last_name": "Manager",
+				"enabled": True,
+				"send_welcome_email": False,
+			}
+		)
+		user.insert(ignore_permissions=True)
+
+	if not frappe.db.exists("User", "saml.existing@ambrosiapieco.example"):
+		user = frappe.new_doc("User")
+		user.update(
+			{
+				"email": "saml.existing@ambrosiapieco.example",
+				"first_name": "SAML",
+				"last_name": "Existing",
+				"enabled": True,
+				"send_welcome_email": False,
+				"saml_managed": True,
+			}
+		)
+		user.insert(ignore_permissions=True)
 
 
 def create_role_profile():

@@ -81,7 +81,7 @@ class SAMLLoginKey(Document):
 					"x509cert": self.idp_x509cert,
 				},
 				"security": {
-					"authnRequestsSigned": False,
+					"authnRequestsSigned": bool(self.sp_private_key),
 					"requestedAuthnContext": False,
 					"signatureAlgorithm": "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256",
 					"digestAlgorithm": "http://www.w3.org/2001/04/xmlenc#sha256",

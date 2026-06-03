@@ -67,18 +67,49 @@ jobs:
           bench --site test_site set-config allow_tests true
           bench --site test_site run-tests --app saml
 
+      - name: Start Keycloak
+        working-directory: /home/runner/frappe-bench/apps/saml/saml/tests
+        run: |
+          export BENCH_PORT=8000
+          ./keycloak.sh -d
+
+      - name: Wait for Keycloak
+        run: |
+          for attempt in $(seq 1 60); do
+            if curl -sf http://localhost:8080/health/ready >/dev/null; then
+              echo "Keycloak ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Keycloak did not become ready"
+          exit 1
+
       - name: Run Pytest Tests
         working-directory: /home/runner/frappe-bench
         run: |
           source env/bin/activate
+          pip install pytest-cov pytest-order requests
           cd apps/saml
-          poetry install
-          pytest --cov=saml --cov-report=xml --disable-warnings -s | tee pytest-coverage.txt
+          pytest saml/tests \
+            --cov=saml \
+            --cov-report=xml:coverage.xml \
+            --cov-report=term-missing \
+            --disable-warnings -s 2>&1 | tee pytest-coverage.txt
+          python - <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+
+          rate = float(ET.parse("coverage.xml").getroot().get("line-rate", "0"))
+          print(f"Coverage line-rate: {rate:.1%}")
+          if rate <= 0:
+              sys.exit("Coverage report shows 0% — pytest did not measure executed code")
+          PY
         env:
           TYPE: server
 
       - name: Pytest coverage comment
-        uses: MishaKav/pytest-coverage-comment@main
+        uses: MishaKav/pytest-coverage-comment@v1
         with:
           pytest-coverage-path: /home/runner/frappe-bench/apps/saml/pytest-coverage.txt
           pytest-xml-coverage-path: /home/runner/frappe-bench/apps/saml/coverage.xml

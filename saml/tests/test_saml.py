@@ -762,3 +762,40 @@ def test_auto_saml_e2e_with_idp_session(keycloak_session):
 	finally:
 		saml_key.auto_saml_login = original
 		saml_key.save(ignore_permissions=True)
+
+
+@pytest.mark.order(71)
+def test_add_saml_provider_logins_prepends_enabled_providers():
+	from frappe.utils import set_request
+
+	from saml.www.login import add_saml_provider_logins
+
+	set_request(method="GET", path="/login", query_string="redirect-to=%2Fapp")
+	context = frappe._dict(
+		provider_logins=[{"name": "google", "provider_name": "Google", "auth_url": "/oauth"}]
+	)
+	add_saml_provider_logins(context)
+
+	assert context.saml_login is True
+	assert context.provider_logins[0]["name"] == PROVIDER
+	assert PROVIDER in context.provider_logins[0]["auth_url"]
+	assert "redirect-to=/app" in context.provider_logins[0]["auth_url"]
+	assert context.provider_logins[1]["name"] == "google"
+
+
+@pytest.mark.order(72)
+def test_get_context_builds_login_page_with_saml_providers():
+	from frappe.utils import set_request
+
+	from saml.www.login import get_context
+
+	set_request(method="GET", path="/login")
+	frappe.set_user("Guest")
+	try:
+		context = frappe._dict()
+		get_context(context)
+		assert context.title == "Login"
+		assert context.saml_login is True
+		assert any(provider["name"] == PROVIDER for provider in context.provider_logins)
+	finally:
+		frappe.set_user("Administrator")

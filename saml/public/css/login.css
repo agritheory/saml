@@ -1,0 +1,4 @@
+.login-button-wrapper:has(.btn-login-with-frappe-cloud),
+.btn-login-with-frappe-cloud {
+	display: none;
+}

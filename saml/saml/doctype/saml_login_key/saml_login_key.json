@@ -12,6 +12,7 @@
 		"match_saml_roles",
 		"terminate_saml_session_on_logout",
 		"disallow_password_update",
+		"allow_relaxed_saml_validation",
 		"column_break_jwoo",
 		"saml_domains",
 		"sp_details_section",
@@ -172,6 +173,14 @@
 			"fieldname": "disallow_password_update",
 			"fieldtype": "Check",
 			"label": "Disallow Password Set/Reset"
+		},
+		{
+			"default": "0",
+			"depends_on": "eval:doc.enable_saml_login",
+			"description": "WARNING: Only enable if your IdP requires it. Disables destination, timing, and audience validation.",
+			"fieldname": "allow_relaxed_saml_validation",
+			"fieldtype": "Check",
+			"label": "Allow Relaxed SAML Validation"
 		},
 		{
 			"depends_on": "eval:doc.enable_saml_login",

@@ -59,6 +59,18 @@ def get_request_data(provider):
 	return request_data
 
 
+def sanitize_redirect_path(path: str | None) -> str:
+	"""Ensure redirect path is a safe relative URL, not an open redirect."""
+	if not path:
+		return ""
+	path = path.strip()
+	if path.startswith("//") or "://" in path:
+		return ""
+	if not path.startswith("/"):
+		return ""
+	return path
+
+
 @frappe.whitelist(allow_guest=True)
 def acs():
 	try:
@@ -117,7 +129,7 @@ def acs():
 			from saml.saml.auth import is_passive_auth_failure
 
 			if is_passive_auth_failure(errors, error_reason):
-				redirect_to = post_data.get("RelayState") or "/app"
+				redirect_to = sanitize_redirect_path(post_data.get("RelayState")) or "/app"
 				redirect_url = build_saml_login_redirect(provider, redirect_to=redirect_to, is_passive=False)
 				frappe.local.response["type"] = "redirect"
 				frappe.local.response["location"] = redirect_url
@@ -215,16 +227,23 @@ def acs():
 		frappe.local.login_manager.user = user.name
 		frappe.local.login_manager.post_login()
 		frappe.db.commit()
-		redirect_to = post_data.get("RelayState")
+		redirect_to = sanitize_redirect_path(post_data.get("RelayState"))
 
 		if not redirect_to:
 			redirect_to = "/me" if user.user_type == "Website User" else "/app"
 		frappe.local.response["type"] = "redirect"
 		frappe.local.response["location"] = frappe.utils.get_url(redirect_to)
 
-	except Exception as e:
+	except Exception:
 		frappe.log_error(frappe.get_traceback(), _("SAML Login Error"))
-		frappe.respond_as_web_page(_("SAML Login Failed"), frappe.get_traceback(), http_status_code=500)
+		if frappe.conf.get("developer_mode"):
+			frappe.respond_as_web_page(_("SAML Login Failed"), frappe.get_traceback(), http_status_code=500)
+		else:
+			frappe.respond_as_web_page(
+				_("SAML Login Failed"),
+				_("An error occurred during SAML authentication. Please contact your administrator."),
+				http_status_code=500,
+			)
 
 
 def determine_provider_from_saml_response(saml_response):

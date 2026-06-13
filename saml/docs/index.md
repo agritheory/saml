@@ -92,6 +92,19 @@ When you enter an **IDP Entity ID** on a new SAML Login Key, the form auto-fills
 
 **Scheduler behavior**: Frappe runs an hourly background job that checks each provider with **Sync IdP Metadata** enabled. If the provider's cron schedule is due based on **Last IdP Metadata Sync**, the certificate is updated. Sync may run up to about one hour after the configured cron time. Metadata sync never runs during login or ACS processing.
 
+### Security Settings
+
+**Allow Relaxed SAML Validation**: By default, SAML responses are validated strictly according to the SAML 2.0 specification. This includes:
+
+- Destination URL validation
+- Response timing and conditions
+- Audience restriction
+- InResponseTo correlation
+
+Some older or non-compliant Identity Providers may fail strict validation. If you encounter SAML errors after upgrading or with a specific IdP, you can enable **Allow Relaxed SAML Validation** to disable these checks.
+
+> **WARNING**: Only enable relaxed validation if your IdP requires it. Strict validation protects against SAML response replay and injection attacks. When relaxed validation is enabled, ensure your IdP is properly secured and uses HTTPS.
+
 #### Common IdP Setup Examples:
 
 

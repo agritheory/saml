@@ -24,6 +24,7 @@ class SAMLLoginKey(Document):
 		from frappe.types import DF
 		from saml.saml.doctype.saml_group_mapping.saml_group_mapping import SAMLGroupMapping
 
+		allow_relaxed_saml_validation: DF.Check
 		auto_saml_login: DF.Check
 		apply_saml_roles: DF.Check
 		disallow_password_update: DF.Check
@@ -112,7 +113,7 @@ class SAMLLoginKey(Document):
 	def get_settings(self, acs_url: str):
 		return OneLogin_Saml2_Settings(
 			{
-				"strict": False,
+				"strict": not self.allow_relaxed_saml_validation,
 				"sp": {
 					"entityId": self.sp_entity_id,
 					"assertionConsumerService": {

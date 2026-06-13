@@ -16,6 +16,7 @@ from saml.saml import (
 	acs,
 	determine_provider_from_saml_response,
 	get_request_data,
+	sanitize_redirect_path,
 )
 from saml.saml.auth import (
 	before_request,
@@ -64,6 +65,63 @@ VALID_SAML_RESPONSE = base64.b64encode(
 def keycloak_session():
 	wait_for_keycloak()
 	sync_keycloak_idp_certificate()
+
+
+@pytest.mark.order(1)
+def test_sanitize_redirect_path_blocks_absolute_urls():
+	assert sanitize_redirect_path("https://evil.com") == ""
+	assert sanitize_redirect_path("//evil.com") == ""
+	assert sanitize_redirect_path("javascript:alert(1)") == ""
+
+
+@pytest.mark.order(2)
+def test_sanitize_redirect_path_allows_relative_paths():
+	assert sanitize_redirect_path("/app") == "/app"
+	assert sanitize_redirect_path("/app/user") == "/app/user"
+
+
+@pytest.mark.order(3)
+def test_sanitize_redirect_path_handles_empty():
+	assert sanitize_redirect_path(None) == ""
+	assert sanitize_redirect_path("") == ""
+
+
+@pytest.mark.order(4)
+def test_get_settings_strict_mode_default():
+	saml_key = frappe.get_doc("SAML Login Key", PROVIDER)
+	settings = saml_key.get_settings("https://example.com/acs")
+	assert settings.is_strict() is True
+
+
+@pytest.mark.order(4)
+def test_get_settings_relaxed_mode_when_enabled():
+	saml_key = frappe.get_doc("SAML Login Key", PROVIDER)
+	original = saml_key.allow_relaxed_saml_validation
+	saml_key.allow_relaxed_saml_validation = True
+	try:
+		settings = saml_key.get_settings("https://example.com/acs")
+		assert settings.is_strict() is False
+	finally:
+		saml_key.allow_relaxed_saml_validation = original
+
+
+@pytest.mark.order(4)
+def test_acs_hides_traceback_outside_developer_mode():
+	original_dev_mode = frappe.conf.get("developer_mode")
+	frappe.conf.developer_mode = 0
+	try:
+		setup_acs_request("invalid-response", provider=PROVIDER)
+		with patch("saml.saml.get_request_data", side_effect=RuntimeError("secret internal error")):
+			with patch("saml.saml.frappe.respond_as_web_page") as mock_respond:
+				acs()
+				mock_respond.assert_called_once()
+				assert "secret internal error" not in mock_respond.call_args[0][1]
+				assert mock_respond.call_args[1]["http_status_code"] == 500
+	finally:
+		if original_dev_mode:
+			frappe.conf.developer_mode = original_dev_mode
+		else:
+			frappe.conf.pop("developer_mode", None)
 
 
 @pytest.mark.order(5)

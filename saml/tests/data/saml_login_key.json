@@ -4,6 +4,7 @@
 		"doctype": "SAML Login Key",
 		"enable_saml_login": true,
 		"auto_saml_login": true,
+		"allow_relaxed_saml_validation": false,
 		"apply_saml_roles": true,
 		"idp_entity_id": "http://localhost:8080/realms/frappe",
 		"idp_metadata_sync_cron": "0 6 * * *",

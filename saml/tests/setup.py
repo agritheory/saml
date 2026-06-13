@@ -70,6 +70,9 @@ def create_test_users():
 
 
 def create_role_profile():
+	if frappe.db.exists("Role Profile", "Knowledge Base"):
+		return
+
 	role_profile = frappe.new_doc("Role Profile")
 	role_profile.name = "Knowledge Base"
 	role_profile.role_profile = "Knowledge Base"
@@ -89,5 +92,10 @@ def create_saml_login_key():
 	settings_file = test_data_dir / "saml_login_key.json"
 	login_keys = json.loads(settings_file.read_text())
 	for login_key in login_keys:
-		saml_key = frappe.get_doc(login_key)
-		saml_key.insert()
+		if frappe.db.exists("SAML Login Key", login_key["name"]):
+			saml_key = frappe.get_doc("SAML Login Key", login_key["name"])
+			saml_key.update(login_key)
+			saml_key.save(ignore_permissions=True)
+		else:
+			saml_key = frappe.get_doc(login_key)
+			saml_key.insert()

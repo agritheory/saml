@@ -5,6 +5,7 @@
 	"engine": "InnoDB",
 	"field_order": [
 		"enable_saml_login",
+		"auto_saml_login",
 		"configuration_section",
 		"provider_name",
 		"apply_saml_roles",
@@ -30,6 +31,14 @@
 			"fieldname": "enable_saml_login",
 			"fieldtype": "Check",
 			"label": "Enable SAML Login"
+		},
+		{
+			"default": "0",
+			"depends_on": "eval:doc.enable_saml_login",
+			"description": "When enabled, guests visiting /app are sent to SAML instead of the login page. Only one enabled provider may use this setting.",
+			"fieldname": "auto_saml_login",
+			"fieldtype": "Check",
+			"label": "Auto SAML Login"
 		},
 		{
 			"fieldname": "provider_name",

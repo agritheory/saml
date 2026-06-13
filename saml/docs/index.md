@@ -4,7 +4,7 @@ For license information, please see license.txt-->
 # SAML Integration
 
 <div class="byline">
-  Tyler Matteson 2026-05-06
+  Tyler Matteson 2026-05-09
 </div>
 
 
@@ -33,6 +33,16 @@ To set up a SAML provider:
 3. Enter a descriptive "Provider Name" (e.g., "Corporate SSO" or "Okta SSO")
 4. Check "Enable SAML Login" to activate this provider
 5. Fill in the Service Provider and Identity Provider details as outlined in the following sections
+
+### Auto SAML Login
+
+When **Auto SAML Login** is enabled on a SAML Login Key, guests who open `/app` or any `/app/*` route are sent directly to the configured Identity Provider instead of the ERPNext login page. If the user already has an active IdP session, authentication is attempted silently (no credential prompt). If silent authentication fails, an interactive SAML login is attempted automatically.
+
+Requirements and notes:
+
+- Only one enabled SAML Login Key may use Auto SAML Login at a time.
+- HTTP redirects between ERPNext and the IdP are still required for SAML; this setting removes the ERPNext login page and IdP password prompt when the IdP session is already valid.
+- After a successful login, ERPNext stores a session cookie (`sid`) on the ERPNext domain. Subsequent visits use that cookie until the session expires.
 
 ### Service Provider (SP) Configuration
 

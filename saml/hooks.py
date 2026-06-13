@@ -161,7 +161,8 @@ doc_events = {
 
 # Request Events
 # ----------------
-# before_request = ["saml.utils.before_request"]
+before_request = ["saml.saml.auth.before_request"]
+website_path_resolver = ["saml.saml.auth.website_path_resolver"]
 # after_request = ["saml.utils.after_request"]
 
 # Job Events

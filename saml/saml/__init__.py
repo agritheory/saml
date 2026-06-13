@@ -2,24 +2,38 @@
 # For license information, please see license.txt
 
 import base64
+import hashlib
+import re
 import xml.etree.ElementTree as ET
 
 import frappe
 from frappe import _
+from frappe.utils import cint
 from frappe.utils.password import remove_encrypted_password
-from onelogin.saml2.auth import OneLogin_Saml2_Auth, OneLogin_Saml2_Settings
+from onelogin.saml2.auth import OneLogin_Saml2_Auth
 from urllib.parse import parse_qs, urlparse
 
+import requests
 
-@frappe.whitelist(allow_guest=True)
-def login(provider):
+
+def build_saml_login_redirect(
+	provider: str, redirect_to: str = "", is_passive: bool = False
+) -> str:
 	saml_key = frappe.get_doc("SAML Login Key", provider)
 	saml_settings = saml_key.get_settings(
 		frappe.utils.get_url(f"/api/method/saml.saml.acs?provider={provider}")
 	)
 	client = OneLogin_Saml2_Auth(get_request_data(provider), saml_settings)
+	return client.login(return_to=redirect_to, is_passive=is_passive)
+
+
+@frappe.whitelist(allow_guest=True)
+def login(provider):
 	redirect_location = frappe.local.request.args.get("redirect-to", "")
-	redirect_url = client.login(return_to=redirect_location)
+	passive = cint(frappe.local.request.args.get("passive", 0))
+	redirect_url = build_saml_login_redirect(
+		provider, redirect_to=redirect_location, is_passive=bool(passive)
+	)
 	frappe.local.response["type"] = "redirect"
 	frappe.local.response["location"] = redirect_url
 
@@ -49,9 +63,44 @@ def get_request_data(provider):
 	return request_data
 
 
+def cert_fingerprint(cert: str | None) -> str:
+	if not cert:
+		return "missing"
+	return hashlib.sha256(cert.encode()).hexdigest()[:16]
+
+
+def fetch_live_idp_certificate(idp_entity_id: str | None) -> str | None:
+	if not idp_entity_id:
+		return None
+	try:
+		descriptor_url = f"{idp_entity_id.rstrip('/')}/protocol/saml/descriptor"
+		response = requests.get(descriptor_url, timeout=10)
+		match = re.search(r"<ds:X509Certificate>([^<]+)</ds:X509Certificate>", response.text)
+		if match:
+			return match.group(1)
+	except requests.RequestException:
+		pass
+	return None
+
+
+def ensure_current_idp_certificate(saml_key):
+	live_cert = fetch_live_idp_certificate(saml_key.idp_entity_id)
+	if not live_cert:
+		return saml_key
+
+	stored_fp = cert_fingerprint(saml_key.idp_x509cert)
+	live_fp = cert_fingerprint(live_cert)
+	if stored_fp == live_fp:
+		return saml_key
+
+	saml_key.idp_x509cert = live_cert
+	saml_key.save(ignore_permissions=True)
+
+	return saml_key
+
+
 @frappe.whitelist(allow_guest=True)
 def acs():
-	https_on = not frappe.conf.get("developer_mode", False)
 	try:
 		post_data = dict(frappe.request.form.copy())
 		query_data = dict(frappe.request.args.copy())
@@ -90,50 +139,15 @@ def acs():
 			)
 			return
 
-		host = frappe.conf.get("host_name", frappe.local.request.host)
-		if host.startswith("https://") or host.startswith("http://"):
-			host = host.split("://", 1)[1]
-
-		if not frappe.conf.get("developer_mode", False):
-			host = host.split(":")[0]
-
-		request_data = {
-			"http_host": host,
-			"script_name": frappe.local.request.environ.get("PATH_INFO"),
-			"post_data": post_data,
-			"https": "on" if https_on else "off",
-		}
-
-		if frappe.conf.get("developer_mode", False):
-			request_data["server_port"] = frappe.local.request.environ.get("SERVER_PORT")
-
 		saml_key = frappe.get_doc("SAML Login Key", provider)
+		saml_key = ensure_current_idp_certificate(saml_key)
+		request_data = get_request_data(provider)
+		request_data["post_data"] = post_data
+		if not request_data.get("query_string"):
+			request_data["query_string"] = f"provider={provider}"
 
-		if https_on:
-			acs_url = f"https://{host}/api/method/saml.saml.acs"
-		else:
-			acs_url = f"http://{host}/api/method/saml.saml.acs"
-
-		saml_settings = OneLogin_Saml2_Settings(
-			{
-				"sp": {
-					"entityId": saml_key.sp_entity_id,
-					"assertionConsumerService": {
-						"url": acs_url,
-						"binding": "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST",
-					},
-					"signatureAlgorithm": "RSA_SHA256",
-				},
-				"idp": {
-					"entityId": saml_key.idp_entity_id,
-					"singleSignOnService": {
-						"url": saml_key.idp_sso_url,
-						"binding": "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect",
-					},
-					"x509cert": saml_key.idp_x509cert,
-				},
-			}
-		)
+		acs_url = frappe.utils.get_url(f"/api/method/saml.saml.acs?provider={provider}")
+		saml_settings = saml_key.get_settings(acs_url)
 
 		client = OneLogin_Saml2_Auth(request_data, saml_settings)
 		client.process_response()
@@ -141,6 +155,15 @@ def acs():
 		errors = client.get_errors()
 		if errors:
 			error_reason = client.get_last_error_reason()
+			from saml.saml.auth import is_passive_auth_failure
+
+			if is_passive_auth_failure(errors, error_reason):
+				redirect_to = post_data.get("RelayState") or "/app"
+				redirect_url = build_saml_login_redirect(provider, redirect_to=redirect_to, is_passive=False)
+				frappe.local.response["type"] = "redirect"
+				frappe.local.response["location"] = redirect_url
+				return
+
 			frappe.respond_as_web_page(
 				_("SAML Login Failed"),
 				_(f"Invalid SAML response: {error_reason}"),

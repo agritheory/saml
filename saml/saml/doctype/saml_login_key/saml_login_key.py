@@ -1,9 +1,13 @@
 # Copyright (c) 2025, AgriTheory and contributors
 # For license information, please see license.txt
 
+import re
+
 import frappe
+from frappe import _
 from frappe.model.document import Document
 
+import requests
 from onelogin.saml2.auth import OneLogin_Saml2_Settings
 
 
@@ -17,6 +21,7 @@ class SAMLLoginKey(Document):
 		from frappe.types import DF
 		from saml.saml.doctype.saml_group_mapping.saml_group_mapping import SAMLGroupMapping
 
+		auto_saml_login: DF.Check
 		apply_saml_roles: DF.Check
 		disallow_password_update: DF.Check
 		enable_saml_login: DF.Check
@@ -89,6 +94,40 @@ class SAMLLoginKey(Document):
 				},
 			}
 		)
+
+	def sync_idp_certificate_from_descriptor(self):
+		if not self.idp_entity_id:
+			frappe.throw(_("IDP Entity ID is required to sync the certificate"))
+
+		descriptor_url = f"{self.idp_entity_id.rstrip('/')}/protocol/saml/descriptor"
+		response = requests.get(descriptor_url, timeout=30)
+		response.raise_for_status()
+		match = re.search(r"<ds:X509Certificate>([^<]+)</ds:X509Certificate>", response.text)
+		if not match:
+			frappe.throw(_("No X509Certificate found in IdP descriptor at {0}").format(descriptor_url))
+
+		self.idp_x509cert = match.group(1)
+
+
+@frappe.whitelist()
+def sync_idp_certificate(provider: str):
+	frappe.only_for("System Manager")
+	saml_key: SAMLLoginKey = frappe.get_doc("SAML Login Key", provider)
+	saml_key.sync_idp_certificate_from_descriptor()
+	saml_key.save(ignore_permissions=True)
+	return {"synced": True, "provider": provider}
+
+
+def get_auto_saml_provider() -> str | None:
+	providers = frappe.get_all(
+		"SAML Login Key",
+		filters={"enable_saml_login": 1, "auto_saml_login": 1},
+		pluck="name",
+		order_by="name",
+	)
+	if len(providers) == 1:
+		return providers[0]
+	return None
 
 
 @frappe.whitelist(allow_guest=True)

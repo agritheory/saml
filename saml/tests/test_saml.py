@@ -642,7 +642,7 @@ def test_acs_determines_provider_from_saml_issuer(keycloak_session):
 	assert frappe.db.exists("User", "warehouse@ambrosiapieco.example")
 
 
-@pytest.mark.order(59)
+@pytest.mark.order(62)
 def test_get_idp_metadata_url_fallback():
 	saml_key = frappe.get_doc("SAML Login Key", PROVIDER)
 	original_url = saml_key.idp_metadata_url
@@ -655,7 +655,7 @@ def test_get_idp_metadata_url_fallback():
 		saml_key.idp_metadata_url = original_url
 
 
-@pytest.mark.order(60)
+@pytest.mark.order(63)
 def test_invalid_idp_metadata_sync_cron_raises():
 	saml_key = frappe.get_doc("SAML Login Key", PROVIDER)
 	original_sync = saml_key.sync_idp_metadata
@@ -671,7 +671,7 @@ def test_invalid_idp_metadata_sync_cron_raises():
 	saml_key.save(ignore_permissions=True)
 
 
-@pytest.mark.order(61)
+@pytest.mark.order(64)
 def test_run_scheduled_idp_metadata_syncs_runs_due_providers():
 	saml_key = frappe.get_doc("SAML Login Key", PROVIDER)
 	original_sync = saml_key.sync_idp_metadata
@@ -693,7 +693,7 @@ def test_run_scheduled_idp_metadata_syncs_runs_due_providers():
 	saml_key.save(ignore_permissions=True)
 
 
-@pytest.mark.order(62)
+@pytest.mark.order(65)
 def test_sync_idp_certificate_from_descriptor(keycloak_session):
 	import re
 
@@ -709,7 +709,7 @@ def test_sync_idp_certificate_from_descriptor(keycloak_session):
 	assert saml_key.last_idp_metadata_sync
 
 
-@pytest.mark.order(65)
+@pytest.mark.order(66)
 def test_silent_saml_with_existing_idp_session(keycloak_session):
 	session = establish_keycloak_idp_session("warehouse", "apc-warehouse")
 	saml_response, relay_state, acs_url = complete_silent_saml_login(session, redirect_to="/app")
@@ -718,7 +718,7 @@ def test_silent_saml_with_existing_idp_session(keycloak_session):
 	assert frappe.db.exists("User", "warehouse@ambrosiapieco.example")
 
 
-@pytest.mark.order(66)
+@pytest.mark.order(67)
 def test_saml_session_allows_app_access_without_reauth(keycloak_session):
 	saml_response, relay_state, acs_url = complete_keycloak_login("warehouse", "apc-warehouse")
 	invoke_acs(saml_response, relay_state)
@@ -729,14 +729,14 @@ def test_saml_session_allows_app_access_without_reauth(keycloak_session):
 	assert frappe.session.user == "warehouse@ambrosiapieco.example"
 
 
-@pytest.mark.order(67)
+@pytest.mark.order(68)
 def test_silent_saml_without_idp_session_shows_login_form(keycloak_session):
 	session = requests.Session()
 	with pytest.raises(RuntimeError, match="Expected silent SSO"):
 		complete_silent_saml_login(session, redirect_to="/app")
 
 
-@pytest.mark.order(68)
+@pytest.mark.order(69)
 def test_silent_saml_preserves_redirect_to(keycloak_session):
 	session = establish_keycloak_idp_session("warehouse", "apc-warehouse")
 	redirect_to = "/app/sales"
@@ -746,7 +746,7 @@ def test_silent_saml_preserves_redirect_to(keycloak_session):
 	assert redirect_to in frappe.local.response["location"]
 
 
-@pytest.mark.order(69)
+@pytest.mark.order(70)
 def test_auto_saml_e2e_with_idp_session(keycloak_session):
 	saml_key = frappe.get_doc("SAML Login Key", PROVIDER)
 	original = saml_key.auto_saml_login

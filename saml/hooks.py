@@ -112,24 +112,11 @@ doc_events = {
 
 # Scheduled Tasks
 # ---------------
+# Hourly tick is the poll interval; per-provider sync timing is governed by idp_metadata_sync_cron.
 
-# scheduler_events = {
-# 	"all": [
-# 		"saml.tasks.all"
-# 	],
-# 	"daily": [
-# 		"saml.tasks.daily"
-# 	],
-# 	"hourly": [
-# 		"saml.tasks.hourly"
-# 	],
-# 	"weekly": [
-# 		"saml.tasks.weekly"
-# 	],
-# 	"monthly": [
-# 		"saml.tasks.monthly"
-# 	],
-# }
+scheduler_events = {
+	"hourly": ["saml.saml.doctype.saml_login_key.saml_login_key.run_scheduled_idp_metadata_syncs"]
+}
 
 # Testing
 # -------

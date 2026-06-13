@@ -15,7 +15,6 @@ from saml.overrides.user import validate_reset_password
 from saml.saml import (
 	acs,
 	determine_provider_from_saml_response,
-	ensure_current_idp_certificate,
 	get_request_data,
 )
 from saml.saml.auth import (
@@ -25,14 +24,15 @@ from saml.saml.auth import (
 	website_path_resolver,
 )
 from saml.saml.doctype.saml_login_key.saml_login_key import (
+	SAMLLoginKey,
 	get_auto_saml_provider,
+	run_scheduled_idp_metadata_syncs,
 	sync_idp_certificate,
 )
 from saml.tests.keycloak_helpers import (
 	KEYCLOAK_BASE_URL,
 	KEYCLOAK_REALM,
 	PROVIDER,
-	STALE_KEYCLOAK_IDP_CERT,
 	build_saml_auth,
 	complete_guest_auto_saml_login,
 	complete_keycloak_login,
@@ -584,44 +584,71 @@ def test_acs_determines_provider_from_saml_issuer(keycloak_session):
 	assert frappe.db.exists("User", "warehouse@ambrosiapieco.example")
 
 
+@pytest.mark.order(59)
+def test_get_idp_metadata_url_fallback():
+	saml_key = frappe.get_doc("SAML Login Key", PROVIDER)
+	original_url = saml_key.idp_metadata_url
+	saml_key.idp_metadata_url = ""
+	try:
+		assert saml_key.get_idp_metadata_url() == (
+			f"{saml_key.idp_entity_id.rstrip('/')}/protocol/saml/descriptor"
+		)
+	finally:
+		saml_key.idp_metadata_url = original_url
+
+
+@pytest.mark.order(60)
+def test_invalid_idp_metadata_sync_cron_raises():
+	saml_key = frappe.get_doc("SAML Login Key", PROVIDER)
+	original_sync = saml_key.sync_idp_metadata
+	original_cron = saml_key.idp_metadata_sync_cron
+	saml_key.sync_idp_metadata = True
+	saml_key.idp_metadata_sync_cron = "not a cron"
+	with pytest.raises(frappe.ValidationError):
+		saml_key.save(ignore_permissions=True)
+
+	saml_key = frappe.get_doc("SAML Login Key", PROVIDER)
+	saml_key.sync_idp_metadata = original_sync
+	saml_key.idp_metadata_sync_cron = original_cron
+	saml_key.save(ignore_permissions=True)
+
+
+@pytest.mark.order(61)
+def test_run_scheduled_idp_metadata_syncs_runs_due_providers():
+	saml_key = frappe.get_doc("SAML Login Key", PROVIDER)
+	original_sync = saml_key.sync_idp_metadata
+	original_last = saml_key.last_idp_metadata_sync
+	saml_key.sync_idp_metadata = True
+	saml_key.last_idp_metadata_sync = None
+	saml_key.save(ignore_permissions=True)
+	with patch.object(SAMLLoginKey, "is_idp_metadata_sync_due", return_value=True):
+		with patch.object(SAMLLoginKey, "sync_idp_metadata_from_url") as mock_sync:
+			run_scheduled_idp_metadata_syncs()
+			mock_sync.assert_called_once()
+
+	saml_key.reload()
+	assert saml_key.last_idp_metadata_sync
+
+	saml_key = frappe.get_doc("SAML Login Key", PROVIDER)
+	saml_key.sync_idp_metadata = original_sync
+	saml_key.last_idp_metadata_sync = original_last
+	saml_key.save(ignore_permissions=True)
+
+
 @pytest.mark.order(62)
 def test_sync_idp_certificate_from_descriptor(keycloak_session):
-	from saml.saml import fetch_live_idp_certificate
+	import re
 
 	frappe.set_user("Administrator")
 	sync_idp_certificate(PROVIDER)
 	saml_key = frappe.get_doc("SAML Login Key", PROVIDER)
-	live_cert = fetch_live_idp_certificate(saml_key.idp_entity_id)
-	assert saml_key.idp_x509cert == live_cert
-
-
-@pytest.mark.order(63)
-def test_ensure_current_idp_certificate_noop_when_current(keycloak_session):
-	saml_key = frappe.get_doc("SAML Login Key", PROVIDER)
-	sync_keycloak_idp_certificate()
-	cert_before = saml_key.idp_x509cert
-	ensure_current_idp_certificate(saml_key)
-	saml_key.reload()
-	assert saml_key.idp_x509cert == cert_before
-
-
-@pytest.mark.order(64)
-def test_acs_succeeds_after_stale_idp_cert(keycloak_session):
-	saml_key = frappe.get_doc("SAML Login Key", PROVIDER)
-	original_cert = saml_key.idp_x509cert
-	saml_key.idp_x509cert = STALE_KEYCLOAK_IDP_CERT
-	saml_key.save(ignore_permissions=True)
-	try:
-		saml_response, relay_state, acs_url = complete_keycloak_login("warehouse", "apc-warehouse")
-		invoke_acs(saml_response, relay_state)
-		assert frappe.db.exists("User", "warehouse@ambrosiapieco.example")
-		saml_key.reload()
-		assert saml_key.idp_x509cert != STALE_KEYCLOAK_IDP_CERT
-		assert saml_key.idp_x509cert.startswith("MIIC")
-	finally:
-		if original_cert:
-			saml_key.idp_x509cert = original_cert
-			saml_key.save(ignore_permissions=True)
+	metadata_url = saml_key.get_idp_metadata_url()
+	response = requests.get(metadata_url, timeout=30)
+	response.raise_for_status()
+	match = re.search(r"<ds:X509Certificate>([^<]+)</ds:X509Certificate>", response.text)
+	assert match
+	assert saml_key.idp_x509cert == match.group(1)
+	assert saml_key.last_idp_metadata_sync
 
 
 @pytest.mark.order(65)

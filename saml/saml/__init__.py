@@ -2,8 +2,6 @@
 # For license information, please see license.txt
 
 import base64
-import hashlib
-import re
 import xml.etree.ElementTree as ET
 
 import frappe
@@ -12,8 +10,6 @@ from frappe.utils import cint
 from frappe.utils.password import remove_encrypted_password
 from onelogin.saml2.auth import OneLogin_Saml2_Auth
 from urllib.parse import parse_qs, urlparse
-
-import requests
 
 
 def build_saml_login_redirect(
@@ -63,42 +59,6 @@ def get_request_data(provider):
 	return request_data
 
 
-def cert_fingerprint(cert: str | None) -> str:
-	if not cert:
-		return "missing"
-	return hashlib.sha256(cert.encode()).hexdigest()[:16]
-
-
-def fetch_live_idp_certificate(idp_entity_id: str | None) -> str | None:
-	if not idp_entity_id:
-		return None
-	try:
-		descriptor_url = f"{idp_entity_id.rstrip('/')}/protocol/saml/descriptor"
-		response = requests.get(descriptor_url, timeout=10)
-		match = re.search(r"<ds:X509Certificate>([^<]+)</ds:X509Certificate>", response.text)
-		if match:
-			return match.group(1)
-	except requests.RequestException:
-		pass
-	return None
-
-
-def ensure_current_idp_certificate(saml_key):
-	live_cert = fetch_live_idp_certificate(saml_key.idp_entity_id)
-	if not live_cert:
-		return saml_key
-
-	stored_fp = cert_fingerprint(saml_key.idp_x509cert)
-	live_fp = cert_fingerprint(live_cert)
-	if stored_fp == live_fp:
-		return saml_key
-
-	saml_key.idp_x509cert = live_cert
-	saml_key.save(ignore_permissions=True)
-
-	return saml_key
-
-
 @frappe.whitelist(allow_guest=True)
 def acs():
 	try:
@@ -140,7 +100,6 @@ def acs():
 			return
 
 		saml_key = frappe.get_doc("SAML Login Key", provider)
-		saml_key = ensure_current_idp_certificate(saml_key)
 		request_data = get_request_data(provider)
 		request_data["post_data"] = post_data
 		if not request_data.get("query_string"):

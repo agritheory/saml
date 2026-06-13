@@ -4,7 +4,7 @@ For license information, please see license.txt-->
 # SAML Integration
 
 <div class="byline">
-  Tyler Matteson 2026-05-09
+  Tyler Matteson 2026-06-13
 </div>
 
 
@@ -71,6 +71,27 @@ Obtain the following information from your Identity Provider (such as Okta, Azur
 
 **IDP x509cert**: The public certificate provided by your IdP, used to verify signed SAML responses. Copy the full certificate provided by your IdP, excluding the `-----BEGIN CERTIFICATE-----` and `-----END CERTIFICATE-----` tags.
 
+### IdP Metadata Sync
+
+Instead of manually copying the IdP signing certificate, you can fetch it from IdP metadata on a schedule or on demand. Sync only updates **IDP x509cert**; Entity ID and SSO URL remain manual configuration.
+
+**Sync IdP Metadata**: When checked, this provider is included in the background metadata sync schedule. Requires **Enable SAML Login**.
+
+**IdP Metadata URL**: The URL fetched for IdP metadata.
+
+- Keycloak default: `{entity_id}/protocol/saml/descriptor` (for example, `http://localhost:8080/realms/myrealm/protocol/saml/descriptor`)
+- Entra ID example: `https://login.microsoftonline.com/{tenant-id}/federationmetadata/2007-06/federationmetadata.xml`
+
+When you enter an **IDP Entity ID** on a new SAML Login Key, the form auto-fills this field with the Keycloak descriptor pattern if it is empty.
+
+**IdP Metadata Sync Cron**: Per-provider cron schedule for background sync. Default: `0 6 * * *` (daily at 6:00 AM). Uses standard five-field cron syntax (minute, hour, day of month, month, day of week). Only evaluated when **Sync IdP Metadata** is checked.
+
+**Last IdP Metadata Sync**: Read-only timestamp of the last successful metadata sync.
+
+**Manual sync**: On a saved SAML Login Key with **Enable SAML Login**, use the **Sync IdP Metadata** button to fetch metadata immediately. Manual sync works whether or not scheduled sync is enabled.
+
+**Scheduler behavior**: Frappe runs an hourly background job that checks each provider with **Sync IdP Metadata** enabled. If the provider's cron schedule is due based on **Last IdP Metadata Sync**, the certificate is updated. Sync may run up to about one hour after the configured cron time. Metadata sync never runs during login or ACS processing.
+
 #### Common IdP Setup Examples:
 
 
@@ -98,7 +119,7 @@ To configure Keycloak as your Identity Provider:
      - SAML Attribute Name: "NameID"
      - SAML Attribute NameFormat: "Basic"
 10. In the Installation tab, select "SAML Metadata IDPSSODescriptor" format to download the XML metadata
-11. Extract the following information from the metadata:
+11. Extract the following information from the metadata (or set **IdP Metadata URL** to the descriptor URL and use **Sync IdP Metadata** to fetch the certificate automatically):
     - Entity ID: The value of the `entityID` attribute in the `EntityDescriptor` element
     - SSO URL: The value of the `Location` attribute in the `SingleSignOnService` element with `Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect"`
     - X509 Certificate: The value between the `<X509Certificate>` and `</X509Certificate>` tags

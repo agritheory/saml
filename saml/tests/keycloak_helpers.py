@@ -80,6 +80,8 @@ class SAMLFormParser(HTMLParser):
 def sync_keycloak_idp_certificate(provider=PROVIDER):
 	"""Update SAML Login Key IdP cert from the running Keycloak realm descriptor."""
 	saml_key = frappe.get_doc("SAML Login Key", provider)
+	if not saml_key.idp_metadata_url and saml_key.idp_entity_id:
+		saml_key.idp_metadata_url = f"{saml_key.idp_entity_id.rstrip('/')}/protocol/saml/descriptor"
 	saml_key.sync_idp_certificate_from_descriptor()
 	saml_key.save(ignore_permissions=True)
 
@@ -447,9 +449,6 @@ def complete_silent_saml_login(session, redirect_to="/app"):
 		)
 
 	raise RuntimeError("Silent Keycloak SAML login exceeded maximum redirect attempts")
-
-
-STALE_KEYCLOAK_IDP_CERT = "MIICmzCCAYMCBgGVswxgATANBgkqhkiG9w0BAQsFADARMQ8wDQYDVQQDDAZmcmFwcGUwHhcNMjUwMzIwMTAxMzA3WhcNMzUwMzIwMTAxNDQ3WjARMQ8wDQYDVQQDDAZmcmFwcGUwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCztca132gActAvTXMd4S2g+l1jgm2s0VWhdqXcZm2yDBJKqEgj1MxxcQt2xrSiKy99dlerQR/O1FwtCsaDKaMW+1aQ8tur3qIMxq1IM/QtayC8yiMBVPR/+2OCye51U48sJ7eqjU+7xhPYYNUSm48tiN8zm1U4oj7ZZmo79HjLW1ZKWodnkj4Rz6yhNrmh9+QXYb1a3gIu5exAE6PepcjUNjVC4YdokBad4JxpVI+o7j3xJftzhxt5wM6OT5Uwu4IIiRSwABCrlZ0s5b1gG7mQd+0YV1/59e+Zfdq6MUd5bdYF+lhTzxyl0aFgvglucKJL6q0FGFvsHdJXR0qoOB07AgMBAAEwDQYJKoZIhvcNAQELBQADggEBABRYzhFMJmXVX3AdkFzSxxjdUbxyynxbFLVI9MxVWhHEUsTBzXpDGS6nR8k1BSfyStCpWdClMu6kDC7FIHbAIKMpNNr68Zu3w3m6dfLmWpjBHYrqkslwAy873mV5aOWPqonsXHf06DUTKzsRuqIsK5DzdB2+E+FsaA/FiHr7B9ZMbGLh7641yXx8Yry+qOrMuDovJpMh4gF0BTezJuqrdgE+t/dYVyV4wKrNIZ5O7wK+J6rfhiYgh4sq1hw7+YrHwojlr6mxZadRursa1TQ+Tn5nhu/AZVpnugBmFdFI6mPKru8qDUas3KEjRHTKF6gJUj0GW0aCmKo5Zpgkv5Bs49g="
 
 
 def render_pending_saml_redirect(path):

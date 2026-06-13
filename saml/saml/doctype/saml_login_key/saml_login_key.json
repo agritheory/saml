@@ -22,6 +22,11 @@
 		"idp_entity_id",
 		"idp_x509cert",
 		"idp_sso_url",
+		"idp_metadata_sync_section",
+		"sync_idp_metadata",
+		"idp_metadata_url",
+		"idp_metadata_sync_cron",
+		"last_idp_metadata_sync",
 		"mappings_section",
 		"roles"
 	],
@@ -56,6 +61,43 @@
 			"fieldname": "idp_sso_url",
 			"fieldtype": "Data",
 			"label": "IDP SSO URL"
+		},
+		{
+			"collapsible": 1,
+			"depends_on": "eval:doc.enable_saml_login",
+			"fieldname": "idp_metadata_sync_section",
+			"fieldtype": "Section Break",
+			"label": "IdP Metadata Sync"
+		},
+		{
+			"default": "0",
+			"depends_on": "eval:doc.enable_saml_login",
+			"description": "Fetch IdP metadata on a schedule to keep the signing certificate up to date.",
+			"fieldname": "sync_idp_metadata",
+			"fieldtype": "Check",
+			"label": "Sync IdP Metadata"
+		},
+		{
+			"depends_on": "eval:doc.enable_saml_login",
+			"description": "URL fetched for IdP metadata. Keycloak: {entity_id}/protocol/saml/descriptor. Entra ID: https://login.microsoftonline.com/{tenant-id}/federationmetadata/2007-06/federationmetadata.xml",
+			"fieldname": "idp_metadata_url",
+			"fieldtype": "Data",
+			"label": "IdP Metadata URL"
+		},
+		{
+			"default": "0 6 * * *",
+			"depends_on": "eval:doc.sync_idp_metadata",
+			"description": "<pre>*  *  *  *  *\n\u252c  \u252c  \u252c  \u252c  \u252c\n\u2502  \u2502  \u2502  \u2502  \u2502\n\u2502  \u2502  \u2502  \u2502  \u2514 day of week (0 - 6) (0 is Sunday)\n\u2502  \u2502  \u2502  \u2514\u2500\u2500\u2500\u2500\u2500 month (1 - 12)\n\u2502  \u2502  \u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 day of month (1 - 31)\n\u2502  \u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 hour (0 - 23)\n\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 minute (0 - 59)\n\n---\n\n* - Any value\n/ - Step values\n</pre>\n",
+			"fieldname": "idp_metadata_sync_cron",
+			"fieldtype": "Data",
+			"label": "IdP Metadata Sync Cron"
+		},
+		{
+			"depends_on": "eval:doc.enable_saml_login",
+			"fieldname": "last_idp_metadata_sync",
+			"fieldtype": "Datetime",
+			"label": "Last IdP Metadata Sync",
+			"read_only": 1
 		},
 		{
 			"fieldname": "idp_entity_id",

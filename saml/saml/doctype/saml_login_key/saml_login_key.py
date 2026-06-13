@@ -149,6 +149,7 @@ class SAMLLoginKey(Document):
 		if not idp_entity_id:
 			frappe.throw(_("IDP Entity ID is required to sync the certificate"))
 
+		assert idp_entity_id is not None
 		return f"{idp_entity_id.rstrip('/')}/protocol/saml/descriptor"
 
 	def sync_idp_metadata_from_url(self):

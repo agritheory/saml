@@ -13,7 +13,7 @@ app_license = "MIT"
 
 # include js, css files in header of desk.html
 # app_include_css = "/assets/saml/css/saml.css"
-# app_include_js = "/assets/saml/js/saml.js"
+app_include_js = ["desk_logout.bundle.js"]
 
 # include js, css files in header of web template
 # web_include_css = "/assets/saml/css/saml.css"
@@ -126,9 +126,10 @@ scheduler_events = {
 # Overriding Methods
 # ------------------------------
 #
-# override_whitelisted_methods = {
-# 	"frappe.desk.doctype.event.event.get_events": "saml.event.get_events"
-# }
+override_whitelisted_methods = {
+	"logout": "saml.overrides.logout.logout",
+	"web_logout": "saml.overrides.logout.web_logout",
+}
 #
 # each overriding function accepts a `data` argument;
 # generated from the base implementation of the doctype dashboard,
@@ -187,3 +188,5 @@ website_path_resolver = ["saml.saml.auth.website_path_resolver"]
 # auth_hooks = ["saml.auth.authenticate"]
 
 export_python_type_annotations = True
+
+extend_bootinfo = ["saml.saml.auth.extend_bootinfo"]

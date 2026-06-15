@@ -71,6 +71,109 @@ def sanitize_redirect_path(path: str | None) -> str:
 	return path
 
 
+def saml_response_has_authenticated_assertion(saml_response: str | None) -> bool:
+	if not saml_response:
+		return False
+	try:
+		root = ET.fromstring(base64.b64decode(saml_response))
+	except (ValueError, TypeError, ET.ParseError):
+		return False
+
+	status_codes = [elem.get("Value", "") for elem in root.iter() if elem.tag.endswith("StatusCode")]
+	if status_codes and not any("status:success" in value.lower() for value in status_codes):
+		return False
+
+	for elem in root.iter():
+		if not elem.tag.endswith("Assertion"):
+			continue
+		for child in elem.iter():
+			if child.tag.endswith("NameID") and (child.text or "").strip():
+				return True
+
+	return False
+
+
+def is_passive_saml_status_response(saml_response: str | None) -> bool:
+	if not saml_response:
+		return False
+	try:
+		root = ET.fromstring(base64.b64decode(saml_response))
+		text = ET.tostring(root, encoding="unicode").lower()
+	except (ValueError, TypeError, ET.ParseError):
+		return False
+	return "authnfailed" in text or "nopassive" in text
+
+
+def redirect_to_interactive_saml_login(provider: str, post_data: dict):
+	redirect_to = sanitize_redirect_path(post_data.get("RelayState")) or "/app"
+	redirect_url = build_saml_login_redirect(provider, redirect_to=redirect_to, is_passive=False)
+	frappe.local.response["type"] = "redirect"
+	frappe.local.response["location"] = redirect_url
+
+
+def should_retry_interactive_saml_login(
+	errors: list | None, error_reason: str | None, post_data: dict
+) -> bool:
+	from saml.saml.auth import is_passive_auth_failure
+
+	if is_passive_auth_failure(errors, error_reason):
+		return True
+
+	saml_response = post_data.get("SAMLResponse")
+	if saml_response_has_authenticated_assertion(saml_response):
+		return False
+	return is_passive_saml_status_response(saml_response)
+
+
+def is_signature_validation_error(error_reason: str | None) -> bool:
+	if not error_reason:
+		return False
+	lower_reason = error_reason.lower()
+	return "signature" in lower_reason and (
+		"invalid" in lower_reason or "failed" in lower_reason or "reject" in lower_reason
+	)
+
+
+def build_saml_auth_client(saml_key, provider: str, post_data: dict):
+	request_data = get_request_data(provider)
+	request_data["post_data"] = post_data
+	if not request_data.get("query_string"):
+		request_data["query_string"] = f"provider={provider}"
+
+	acs_url = frappe.utils.get_url(f"/api/method/saml.saml.acs?provider={provider}")
+	return OneLogin_Saml2_Auth(request_data, saml_key.get_settings(acs_url))
+
+
+def sync_idp_certificate_for_acs(saml_key):
+	saml_key.sync_idp_metadata_from_url()
+	frappe.db.set_value(
+		"SAML Login Key",
+		saml_key.name,
+		"idp_x509cert",
+		saml_key.idp_x509cert,
+		update_modified=False,
+	)
+
+
+def process_saml_acs_response(saml_key, provider: str, post_data: dict):
+	client = build_saml_auth_client(saml_key, provider, post_data)
+	client.process_response()
+	errors = client.get_errors()
+	error_reason = client.get_last_error_reason()
+
+	if errors and is_signature_validation_error(error_reason):
+		try:
+			sync_idp_certificate_for_acs(saml_key)
+			client = build_saml_auth_client(saml_key, provider, post_data)
+			client.process_response()
+			errors = client.get_errors()
+			error_reason = client.get_last_error_reason()
+		except Exception:
+			frappe.log_error(frappe.get_traceback(), _("SAML IdP certificate sync failed during ACS"))
+
+	return client, errors, error_reason
+
+
 @frappe.whitelist(allow_guest=True)
 def acs():
 	try:
@@ -112,29 +215,13 @@ def acs():
 			return
 
 		saml_key = frappe.get_doc("SAML Login Key", provider)
-		request_data = get_request_data(provider)
-		request_data["post_data"] = post_data
-		if not request_data.get("query_string"):
-			request_data["query_string"] = f"provider={provider}"
+		client, errors, error_reason = process_saml_acs_response(saml_key, provider, post_data)
 
-		acs_url = frappe.utils.get_url(f"/api/method/saml.saml.acs?provider={provider}")
-		saml_settings = saml_key.get_settings(acs_url)
+		if should_retry_interactive_saml_login(errors, error_reason, post_data):
+			redirect_to_interactive_saml_login(provider, post_data)
+			return
 
-		client = OneLogin_Saml2_Auth(request_data, saml_settings)
-		client.process_response()
-
-		errors = client.get_errors()
 		if errors:
-			error_reason = client.get_last_error_reason()
-			from saml.saml.auth import is_passive_auth_failure
-
-			if is_passive_auth_failure(errors, error_reason):
-				redirect_to = sanitize_redirect_path(post_data.get("RelayState")) or "/app"
-				redirect_url = build_saml_login_redirect(provider, redirect_to=redirect_to, is_passive=False)
-				frappe.local.response["type"] = "redirect"
-				frappe.local.response["location"] = redirect_url
-				return
-
 			frappe.respond_as_web_page(
 				_("SAML Login Failed"),
 				_(f"Invalid SAML response: {error_reason}"),

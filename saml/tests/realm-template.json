@@ -96,6 +96,24 @@
 				"clientRole": false,
 				"containerId": "9779947e-3a7d-446c-8b4f-54106988fec1",
 				"attributes": {}
+			},
+			{
+				"id": "c8f3a2b1-4d5e-6f70-8192-a3b4c5d6e7f8",
+				"name": "Warehouse Manager",
+				"description": "Demo warehouse manager role mapped to Frappe Report Manager",
+				"composite": false,
+				"clientRole": false,
+				"containerId": "9779947e-3a7d-446c-8b4f-54106988fec1",
+				"attributes": {}
+			},
+			{
+				"id": "d9e4b3c2-5e6f-7081-9203-b4c5d6e7f8a9",
+				"name": "Stock User",
+				"description": "Demo stock user role mapped to Frappe Workspace Manager",
+				"composite": false,
+				"clientRole": false,
+				"containerId": "9779947e-3a7d-446c-8b4f-54106988fec1",
+				"attributes": {}
 			}
 		],
 		"client": {
@@ -2119,7 +2137,7 @@
 					"temporary": false
 				}
 			],
-			"realmRoles": ["default-roles-frappe"]
+			"realmRoles": ["default-roles-frappe", "Warehouse Manager"]
 		},
 		{
 			"username": "kb.contributor",
@@ -2151,7 +2169,7 @@
 					"temporary": false
 				}
 			],
-			"realmRoles": ["default-roles-frappe"]
+			"realmRoles": ["default-roles-frappe", "Stock User"]
 		},
 		{
 			"username": "picker",
@@ -2167,7 +2185,7 @@
 					"temporary": false
 				}
 			],
-			"realmRoles": ["default-roles-frappe"]
+			"realmRoles": ["default-roles-frappe", "Stock User"]
 		},
 		{
 			"username": "saml.admin",

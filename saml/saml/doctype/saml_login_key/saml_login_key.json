@@ -6,6 +6,8 @@
 	"field_order": [
 		"enable_saml_login",
 		"auto_saml_login",
+		"auto_saml_scope",
+		"auto_saml_paths",
 		"configuration_section",
 		"provider_name",
 		"apply_saml_roles",
@@ -41,10 +43,26 @@
 		{
 			"default": "0",
 			"depends_on": "eval:doc.enable_saml_login",
-			"description": "When enabled, guests visiting /app are sent to SAML instead of the login page. Only one enabled provider may use this setting.",
+			"description": "When enabled, guest requests matching Auto SAML Scope are sent to the IdP for silent SSO before showing ERPNext UI. Only one enabled provider may use this setting.",
 			"fieldname": "auto_saml_login",
 			"fieldtype": "Check",
 			"label": "Auto SAML Login"
+		},
+		{
+			"default": "All Guest Routes",
+			"depends_on": "eval:doc.enable_saml_login && doc.auto_saml_login",
+			"description": "All Guest Routes: every guest page load except built-in API/SAML/static exclusions. Configured Paths: only paths listed below. Desk Only: legacy /app behavior.",
+			"fieldname": "auto_saml_scope",
+			"fieldtype": "Select",
+			"label": "Auto SAML Scope",
+			"options": "All Guest Routes\nConfigured Paths\nDesk Only"
+		},
+		{
+			"depends_on": "eval:doc.enable_saml_login && doc.auto_saml_login && doc.auto_saml_scope=='Configured Paths'",
+			"description": "One path per line. Use a trailing /* for prefix match (for example /app/*). /login covers all login hash sections (/login#login, etc.).",
+			"fieldname": "auto_saml_paths",
+			"fieldtype": "Small Text",
+			"label": "Auto SAML Paths"
 		},
 		{
 			"fieldname": "provider_name",

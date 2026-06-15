@@ -36,13 +36,21 @@ To set up a SAML provider:
 
 ### Auto SAML Login
 
-When **Auto SAML Login** is enabled on a SAML Login Key, guests who open `/app` or any `/app/*` route are sent directly to the configured Identity Provider instead of the ERPNext login page. If the user already has an active IdP session, authentication is attempted silently (no credential prompt). If silent authentication fails, an interactive SAML login is attempted automatically.
+When **Auto SAML Login** is enabled on a SAML Login Key, guest requests matching the configured scope are sent to the IdP for silent SSO before ERPNext UI is shown. If the user already has an active IdP session, authentication is attempted passively (no credential prompt). If silent authentication fails, an interactive SAML login is attempted automatically.
+
+**Auto SAML Scope** controls which guest requests trigger auto SAML:
+
+- **All Guest Routes** (default): every guest page load, recommended for private SSO-mandatory sites with no public content. Built-in exclusions always apply (see below).
+- **Configured Paths**: only paths listed in **Auto SAML Paths**, one per line. Use a trailing `/*` for prefix match (for example `/app/*` matches `/app/user/user-001` in Frappe v15 path-based Desk routing). `/login` covers all login hash sections (`/login#login`, `#forgot`, etc.) because hashes are client-side only.
+- **Desk Only**: legacy behavior — only `/app` and `/app/*`.
 
 Requirements and notes:
 
 - Only one enabled SAML Login Key may use Auto SAML Login at a time.
+- Built-in exclusions (not configurable): `/api/*`, `/assets/*`, `/files/*`, `/private/*`, static file paths (for example `/website_script.js`), `/logout`, and the SAML login/ACS API methods. These paths never trigger auto SAML.
 - HTTP redirects between ERPNext and the IdP are still required for SAML; this setting removes the ERPNext login page and IdP password prompt when the IdP session is already valid.
 - After a successful login, ERPNext stores a session cookie (`sid`) on the ERPNext domain. Subsequent visits use that cookie until the session expires.
+- When Auto SAML Login is enabled, logout sends users to `/logout` instead of `/login`, so they are not immediately signed back in through passive SSO. Use **Log in again** on that page when you want to start a new session.
 
 ### Service Provider (SP) Configuration
 

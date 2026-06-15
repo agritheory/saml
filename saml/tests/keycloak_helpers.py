@@ -14,10 +14,39 @@ import frappe
 import requests
 from onelogin.saml2.auth import OneLogin_Saml2_Auth
 
-KEYCLOAK_BASE_URL = "http://localhost:8080"
-KEYCLOAK_REALM = "frappe"
-KEYCLOAK_HEALTH_URL = f"{KEYCLOAK_BASE_URL}/health/ready"
-PROVIDER = "keycloak"
+
+def get_test_saml_provider():
+	names = frappe.get_all(
+		"SAML Login Key",
+		filters={"enable_saml_login": 1},
+		pluck="name",
+		limit=1,
+	)
+	if not names:
+		frappe.throw("No enabled SAML Login Key found in test database")
+	return names[0]
+
+
+def get_test_saml_login_key():
+	return frappe.get_doc("SAML Login Key", get_test_saml_provider())
+
+
+def resolve_test_provider(provider=None):
+	return provider or get_test_saml_provider()
+
+
+def get_keycloak_health_url():
+	parsed = urlparse(get_test_saml_login_key().idp_entity_id or "")
+	return f"{parsed.scheme}://{parsed.netloc}/health/ready"
+
+
+def get_saml_response_with_fixture_issuer():
+	saml_key = get_test_saml_login_key()
+	xml = f"""<?xml version="1.0"?>
+<samlp:Response xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol">
+<saml:Issuer xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion">{saml_key.idp_entity_id}</saml:Issuer>
+</samlp:Response>"""
+	return base64.b64encode(xml.encode()).decode()
 
 
 def get_webserver_port():
@@ -77,8 +106,9 @@ class SAMLFormParser(HTMLParser):
 			self.current_form = None
 
 
-def sync_keycloak_idp_certificate(provider=PROVIDER):
+def sync_keycloak_idp_certificate(provider=None):
 	"""Update SAML Login Key IdP cert from the running Keycloak realm descriptor."""
+	provider = resolve_test_provider(provider)
 	saml_key = frappe.get_doc("SAML Login Key", provider)
 	if not saml_key.idp_metadata_url and saml_key.idp_entity_id:
 		saml_key.idp_metadata_url = f"{saml_key.idp_entity_id.rstrip('/')}/protocol/saml/descriptor"
@@ -86,17 +116,31 @@ def sync_keycloak_idp_certificate(provider=PROVIDER):
 	saml_key.save(ignore_permissions=True)
 
 
+def commit_db_changes():
+	"""Commit pending DB writes so a separate web server process can see them."""
+	from frappe.database.database import Database
+
+	Database.commit(frappe.db)
+
+
+def set_saml_login_key_values(values: dict, provider=None):
+	provider = resolve_test_provider(provider)
+	frappe.db.set_value("SAML Login Key", provider, values, update_modified=False)
+	commit_db_changes()
+
+
 def wait_for_keycloak(timeout=120):
 	deadline = time.time() + timeout
 	while time.time() < deadline:
 		try:
-			response = requests.get(KEYCLOAK_HEALTH_URL, timeout=5)
+			health_url = get_keycloak_health_url()
+			response = requests.get(health_url, timeout=5)
 			if response.status_code == 200:
 				return
 		except requests.RequestException:
 			pass
 		time.sleep(2)
-	raise RuntimeError(f"Keycloak not ready at {KEYCLOAK_HEALTH_URL}")
+	raise RuntimeError(f"Keycloak not ready at {get_keycloak_health_url()}")
 
 
 def configure_site_for_keycloak():
@@ -104,7 +148,8 @@ def configure_site_for_keycloak():
 	frappe.conf.host_name = f"http://localhost:{port}"
 
 
-def build_saml_auth(provider=PROVIDER):
+def build_saml_auth(provider=None):
+	provider = resolve_test_provider(provider)
 	from frappe.utils import set_request
 	from werkzeug.datastructures import ImmutableMultiDict
 
@@ -252,7 +297,12 @@ def complete_keycloak_login(username, password):
 	raise RuntimeError("Keycloak SAML login exceeded maximum redirect attempts")
 
 
-def setup_acs_request(saml_response, relay_state="", provider=PROVIDER):
+USE_TEST_PROVIDER = object()
+
+
+def setup_acs_request(saml_response, relay_state="", provider=USE_TEST_PROVIDER):
+	if provider is USE_TEST_PROVIDER:
+		provider = get_test_saml_provider()
 	from urllib.parse import urlencode
 
 	from frappe.utils import set_request
@@ -282,11 +332,13 @@ def setup_acs_request(saml_response, relay_state="", provider=PROVIDER):
 	frappe.request = frappe.local.request
 
 
-def invoke_acs(saml_response, relay_state="", provider=PROVIDER):
+def invoke_acs(saml_response, relay_state="", provider=USE_TEST_PROVIDER):
 	from frappe.auth import CookieManager, LoginManager
 
 	from saml.saml import acs
 
+	if provider is USE_TEST_PROVIDER:
+		provider = get_test_saml_provider()
 	setup_acs_request(saml_response, relay_state, provider)
 	frappe.local.cookie_manager = CookieManager()
 	frappe.local.login_manager = LoginManager()
@@ -295,10 +347,13 @@ def invoke_acs(saml_response, relay_state="", provider=PROVIDER):
 	acs()
 
 
-def invoke_login(provider=PROVIDER, redirect_to="", passive=False):
+def invoke_login(provider=USE_TEST_PROVIDER, redirect_to="", passive=False):
 	from frappe.utils import set_request
 
 	from saml.saml import login
+
+	if provider is USE_TEST_PROVIDER:
+		provider = get_test_saml_provider()
 
 	configure_site_for_keycloak()
 	query_string = f"provider={provider}"
@@ -507,6 +562,100 @@ def complete_guest_auto_saml_login(session, path="/app/user"):
 		)
 
 	raise RuntimeError("Guest auto SAML login exceeded maximum redirect attempts")
+
+
+def complete_guest_auto_saml_login_with_credentials(username, password, path="/"):
+	from saml.saml.auth import before_request
+
+	session = requests.Session()
+	setup_guest_get_request(path)
+	before_request()
+	redirect_url = frappe.local.flags.get("saml_auto_redirect_url")
+	if not redirect_url:
+		raise RuntimeError("auto SAML redirect URL was not prepared")
+
+	response = session.get(redirect_url, timeout=30, allow_redirects=True)
+	attempts = 0
+
+	while attempts < 10:
+		attempts += 1
+		error_message = keycloak_error_message(response.text)
+		if error_message:
+			raise RuntimeError(f"Keycloak error: {error_message} (url {response.url})")
+
+		saml_response, relay_state = extract_saml_response(response.text)
+		if saml_response and has_authenticated_saml_assertion(saml_response):
+			return saml_response, relay_state
+
+		forms = parse_forms(response.text, response.url)
+		login_form = next(
+			(form for form in forms if "username" in form["fields"] or "password" in form["fields"]),
+			None,
+		)
+		if login_form:
+			fields = login_form["fields"]
+			fields["username"] = username
+			fields["password"] = password
+			response = session.post(login_form["action"], data=fields, timeout=30, allow_redirects=True)
+			continue
+
+		submit_form = next((form for form in forms if "SAMLResponse" in form["fields"]), None)
+		if submit_form:
+			response = session.post(
+				submit_form["action"], data=submit_form["fields"], timeout=30, allow_redirects=True
+			)
+			continue
+
+		raise RuntimeError(
+			f"Unable to complete guest auto SAML login (status {response.status_code}, url {response.url})"
+		)
+
+	raise RuntimeError("Guest auto SAML login exceeded maximum redirect attempts")
+
+
+def complete_http_auto_saml_home_login(username, password, base_url=None):
+	"""Run the browser-like Auto SAML flow for / through the live web server."""
+	base_url = (base_url or get_bench_base_url()).rstrip("/")
+	session = requests.Session()
+	response = session.get(f"{base_url}/", allow_redirects=True, timeout=30)
+
+	for _ in range(10):
+		error_message = keycloak_error_message(response.text)
+		if error_message:
+			raise RuntimeError(f"Keycloak error: {error_message} (url {response.url})")
+
+		forms = parse_forms(response.text, response.url)
+		saml_form = next((form for form in forms if "SAMLResponse" in form["fields"]), None)
+		if saml_form:
+			response = session.post(
+				saml_form["action"],
+				data=saml_form["fields"],
+				allow_redirects=True,
+				timeout=30,
+			)
+			if response.cookies.get("user_id") not in (None, "Guest"):
+				return session, response
+			continue
+
+		login_form = next(
+			(form for form in forms if "username" in form["fields"] or "password" in form["fields"]),
+			None,
+		)
+		if login_form:
+			fields = login_form["fields"]
+			fields["username"] = username
+			fields["password"] = password
+			response = session.post(login_form["action"], data=fields, allow_redirects=True, timeout=30)
+			continue
+
+		if response.cookies.get("user_id") not in (None, "Guest"):
+			return session, response
+
+		raise RuntimeError(
+			f"Unable to complete HTTP Auto SAML home login (status {response.status_code}, url {response.url})"
+		)
+
+	raise RuntimeError("HTTP Auto SAML home login exceeded maximum redirect attempts")
 
 
 def setup_guest_get_request(path="/app"):

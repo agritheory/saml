@@ -26,6 +26,8 @@ class SAMLLoginKey(Document):
 
 		allow_relaxed_saml_validation: DF.Check
 		auto_saml_login: DF.Check
+		auto_saml_paths: DF.SmallText | None
+		auto_saml_scope: DF.Literal["All Guest Routes", "Configured Paths", "Desk Only"]
 		apply_saml_roles: DF.Check
 		disallow_password_update: DF.Check
 		enable_saml_login: DF.Check
@@ -59,7 +61,22 @@ class SAMLLoginKey(Document):
 	def validate(self):
 		self.sort_by_role_profile()
 		self.validate_auto_saml_login_exclusivity()
+		self.validate_auto_saml_paths()
 		self.validate_idp_metadata_sync_cron()
+
+	def validate_auto_saml_paths(self):
+		if not self.auto_saml_login or not self.enable_saml_login:
+			return
+		if self.auto_saml_scope != "Configured Paths":
+			return
+		if not (self.auto_saml_paths or "").strip():
+			frappe.throw(_("Auto SAML Paths is required when Auto SAML Scope is Configured Paths."))
+		for line in self.auto_saml_paths.splitlines():
+			path = line.strip()
+			if not path:
+				continue
+			if not path.startswith("/"):
+				frappe.throw(_("Each Auto SAML Path must start with /: {0}").format(path))
 
 	def validate_auto_saml_login_exclusivity(self):
 		if not self.auto_saml_login or not self.enable_saml_login:
@@ -207,15 +224,22 @@ def run_scheduled_idp_metadata_syncs():
 			)
 
 
-def get_auto_saml_provider() -> str | None:
+def get_auto_saml_settings() -> dict | None:
 	providers = frappe.get_all(
 		"SAML Login Key",
 		filters={"enable_saml_login": 1, "auto_saml_login": 1},
-		pluck="name",
+		fields=["name", "auto_saml_scope", "auto_saml_paths"],
 		order_by="name",
 	)
-	if len(providers) == 1:
-		return providers[0]
+	if len(providers) != 1:
+		return None
+	return providers[0]
+
+
+def get_auto_saml_provider() -> str | None:
+	settings = get_auto_saml_settings()
+	if settings:
+		return settings["name"]
 	return None
 
 

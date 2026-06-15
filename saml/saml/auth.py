@@ -3,7 +3,48 @@
 
 import frappe
 
-from saml.saml.doctype.saml_login_key.saml_login_key import get_auto_saml_provider
+from saml.saml.doctype.saml_login_key.saml_login_key import (
+	get_auto_saml_provider,
+	get_auto_saml_settings,
+)
+
+AUTO_SAML_EXCLUDED_PREFIXES = (
+	"/api/",
+	"/assets/",
+	"/files/",
+	"/private/",
+)
+
+AUTO_SAML_EXCLUDED_PATHS = (
+	"/api/method/saml.saml.login",
+	"/api/method/saml.saml.acs",
+	"/logout",
+)
+
+AUTO_SAML_EXCLUDED_EXTENSIONS = (
+	".css",
+	".eot",
+	".gif",
+	".ico",
+	".jpeg",
+	".jpg",
+	".js",
+	".map",
+	".png",
+	".svg",
+	".ttf",
+	".webp",
+	".woff",
+	".woff2",
+)
+
+AUTO_SAML_SCOPE_ALL_GUEST_ROUTES = "All Guest Routes"
+AUTO_SAML_SCOPE_CONFIGURED_PATHS = "Configured Paths"
+AUTO_SAML_SCOPE_DESK_ONLY = "Desk Only"
+
+
+def extend_bootinfo(bootinfo):
+	bootinfo["saml_auto_saml_login"] = bool(get_auto_saml_provider())
 
 
 def before_request():
@@ -22,7 +63,7 @@ def before_request():
 	if not provider:
 		return
 
-	initiate_saml_login(provider, redirect_to=path, passive=True)
+	initiate_saml_login(provider, redirect_to=get_auto_saml_redirect_to(request), passive=True)
 
 
 def website_path_resolver(path):
@@ -36,7 +77,57 @@ def website_path_resolver(path):
 
 
 def should_auto_saml_login(path: str) -> bool:
-	return path == "/app" or path.startswith("/app/")
+	if is_auto_saml_excluded_path(path):
+		return False
+
+	settings = get_auto_saml_settings()
+	if not settings:
+		return False
+
+	scope = settings.get("auto_saml_scope") or AUTO_SAML_SCOPE_ALL_GUEST_ROUTES
+	if scope == AUTO_SAML_SCOPE_ALL_GUEST_ROUTES:
+		return True
+	if scope == AUTO_SAML_SCOPE_DESK_ONLY:
+		return path == "/app" or path.startswith("/app/")
+	if scope == AUTO_SAML_SCOPE_CONFIGURED_PATHS:
+		return path_matches_configured_auto_saml_paths(path, settings.get("auto_saml_paths") or "")
+	return False
+
+
+def is_auto_saml_excluded_path(path: str) -> bool:
+	if path in AUTO_SAML_EXCLUDED_PATHS:
+		return True
+	if any(path.startswith(prefix) for prefix in AUTO_SAML_EXCLUDED_PREFIXES):
+		return True
+	lower_path = path.lower()
+	return any(lower_path.endswith(extension) for extension in AUTO_SAML_EXCLUDED_EXTENSIONS)
+
+
+def path_matches_configured_auto_saml_paths(path: str, paths: str) -> bool:
+	for line in paths.splitlines():
+		rule = line.strip()
+		if not rule:
+			continue
+		if path_matches_auto_saml_rule(path, rule):
+			return True
+	return False
+
+
+def path_matches_auto_saml_rule(path: str, rule: str) -> bool:
+	if rule.endswith("/*"):
+		base = rule[:-2]
+		return path == base or path.startswith(f"{base}/")
+	return path == rule
+
+
+def get_auto_saml_redirect_to(request) -> str:
+	path = request.path or ""
+	query_string = request.query_string
+	if isinstance(query_string, bytes):
+		query_string = query_string.decode()
+	if query_string:
+		return f"{path}?{query_string}"
+	return path
 
 
 def initiate_saml_login(

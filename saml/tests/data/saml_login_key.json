@@ -4,6 +4,7 @@
 		"doctype": "SAML Login Key",
 		"enable_saml_login": true,
 		"auto_saml_login": true,
+		"auto_saml_scope": "All Guest Routes",
 		"allow_relaxed_saml_validation": false,
 		"apply_saml_roles": true,
 		"idp_entity_id": "http://localhost:8080/realms/frappe",
@@ -30,6 +31,22 @@
 				"role_or_role_profile": "Role",
 				"saml_role": "System Administrator",
 				"user_role": "System Manager"
+			},
+			{
+				"parent": "keycloak",
+				"parentfield": "roles",
+				"parenttype": "SAML Login Key",
+				"role_or_role_profile": "Role",
+				"saml_role": "Warehouse Manager",
+				"user_role": "Report Manager"
+			},
+			{
+				"parent": "keycloak",
+				"parentfield": "roles",
+				"parenttype": "SAML Login Key",
+				"role_or_role_profile": "Role",
+				"saml_role": "Stock User",
+				"user_role": "Workspace Manager"
 			}
 		],
 		"sync_idp_metadata": true,

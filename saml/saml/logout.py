@@ -6,7 +6,7 @@ from frappe import _
 from onelogin.saml2.auth import OneLogin_Saml2_Auth
 from onelogin.saml2.errors import OneLogin_Saml2_Error
 
-from saml.saml import get_request_data
+from saml.saml import get_request_data, sanitize_redirect_path
 
 LOGOUT_PAGE_PATH = "/logout"
 
@@ -79,8 +79,10 @@ def build_saml_logout_redirect(
 	name_id: str,
 	session_index: str | None,
 	name_id_format: str | None = None,
+	saml_key=None,
 ) -> str:
-	saml_key = frappe.get_doc("SAML Login Key", provider)
+	if saml_key is None:
+		saml_key = frappe.get_doc("SAML Login Key", provider)
 	if not saml_key.terminate_saml_session_on_logout or not saml_key.enable_saml_login:
 		frappe.throw(_("SAML session termination is not enabled for provider {0}").format(provider))
 
@@ -104,6 +106,7 @@ def get_logout_redirect_url() -> str | None:
 					saml_session["name_id"],
 					saml_session.get("session_index"),
 					saml_session.get("name_id_format"),
+					saml_key=saml_key,
 				)
 			except OneLogin_Saml2_Error:
 				frappe.log_error(
@@ -187,7 +190,7 @@ def slo():
 		frappe.local.response["location"] = redirect_url
 		return
 
-	relay_state = frappe.form_dict.get("RelayState")
+	relay_state = sanitize_redirect_path(frappe.form_dict.get("RelayState"))
 	if relay_state and not errors:
 		frappe.local.response["type"] = "redirect"
 		frappe.local.response["location"] = relay_state

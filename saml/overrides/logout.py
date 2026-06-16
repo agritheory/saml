@@ -17,6 +17,7 @@ def logout():
 	redirect_url = get_logout_redirect_url()
 	clear_local_session()
 	if redirect_url:
+		redirect_to_url(redirect_url)
 		return {"redirect_to": redirect_url}
 
 

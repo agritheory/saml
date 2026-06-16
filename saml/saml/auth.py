@@ -45,6 +45,41 @@ AUTO_SAML_SCOPE_ALL_GUEST_ROUTES = "All Guest Routes"
 AUTO_SAML_SCOPE_CONFIGURED_PATHS = "Configured Paths"
 AUTO_SAML_SCOPE_DESK_ONLY = "Desk Only"
 PASSIVE_SAML_SKIP_PARAM = "skip_passive_saml"
+SKIP_PASSIVE_SAML_CACHE_PREFIX = "saml_skip_passive:"
+SKIP_PASSIVE_SAML_TOKEN_TTL = 300
+
+
+def decode_request_query_string(request) -> str:
+	query_string = request.query_string
+	if isinstance(query_string, bytes):
+		query_string = query_string.decode()
+	return query_string or ""
+
+
+def path_with_query_string(path: str, query_string: str) -> str:
+	if query_string:
+		return f"{path}?{query_string}"
+	return path
+
+
+def create_skip_passive_saml_token() -> str:
+	token = frappe.generate_hash(length=32)
+	frappe.cache().set_value(
+		f"{SKIP_PASSIVE_SAML_CACHE_PREFIX}{token}",
+		1,
+		expires_in_sec=SKIP_PASSIVE_SAML_TOKEN_TTL,
+	)
+	return token
+
+
+def consume_skip_passive_saml_token(token: str | None) -> bool:
+	if not token:
+		return False
+	cache_key = f"{SKIP_PASSIVE_SAML_CACHE_PREFIX}{token}"
+	if frappe.cache().get_value(cache_key):
+		frappe.cache().delete_value(cache_key)
+		return True
+	return False
 
 
 def normalize_request_path(path: str) -> str:
@@ -153,13 +188,19 @@ def path_matches_auto_saml_rule(path: str, rule: str) -> bool:
 
 
 def get_auto_saml_redirect_to(request) -> str:
+	from saml.saml import sanitize_redirect_path
+
 	path = request.path or ""
-	query_string = request.query_string
-	if isinstance(query_string, bytes):
-		query_string = query_string.decode()
-	if query_string:
-		return f"{path}?{query_string}"
-	return path
+	if normalize_request_path(path) == "/login":
+		redirect_to = request.args.get("redirect-to")
+		if redirect_to:
+			safe = sanitize_redirect_path(redirect_to)
+			if safe:
+				return safe
+		return path
+
+	query_string = decode_request_query_string(request)
+	return path_with_query_string(path, query_string)
 
 
 def redirect_to_login_page(request):
@@ -175,12 +216,8 @@ def build_login_page_path(request=None) -> str:
 	if not request:
 		return login_path
 
-	query_string = request.query_string
-	if isinstance(query_string, bytes):
-		query_string = query_string.decode()
-	if query_string:
-		login_path = f"{login_path}?{query_string}"
-	return login_path
+	query_string = decode_request_query_string(request)
+	return path_with_query_string(login_path, query_string)
 
 
 def redirect_to_login_after_passive_failure(relay_state: str | None):
@@ -193,15 +230,17 @@ def redirect_to_login_after_passive_failure(relay_state: str | None):
 
 
 def should_skip_passive_saml_on_login(request) -> bool:
-	return bool(request.args.get(PASSIVE_SAML_SKIP_PARAM))
+	token = request.args.get(PASSIVE_SAML_SKIP_PARAM)
+	return consume_skip_passive_saml_token(token)
 
 
 def append_skip_passive_saml_to_login_path(login_path: str) -> str:
 	from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
+	token = create_skip_passive_saml_token()
 	parsed = urlparse(login_path)
 	params = parse_qs(parsed.query, keep_blank_values=True)
-	params[PASSIVE_SAML_SKIP_PARAM] = ["1"]
+	params[PASSIVE_SAML_SKIP_PARAM] = [token]
 	return urlunparse(parsed._replace(query=urlencode(params, doseq=True)))
 
 

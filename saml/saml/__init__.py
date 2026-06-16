@@ -235,7 +235,7 @@ def acs():
 		if errors:
 			frappe.respond_as_web_page(
 				_("SAML Login Failed"),
-				_(f"Invalid SAML response: {error_reason}"),
+				_("Invalid SAML response: {0}").format(error_reason),
 				http_status_code=403,
 			)
 			return
@@ -291,7 +291,7 @@ def acs():
 				remove_encrypted_password("User", user.name, "password")
 
 		if saml_key.apply_saml_roles:
-			roles = attributes.get("Role", [])
+			roles = (attributes or {}).get("Role", [])
 			roles_to_apply = []
 			user.flags.ignore_permissions = True
 
@@ -299,12 +299,11 @@ def acs():
 				for role_mapping in saml_key.roles:
 					if role_mapping.saml_role == role:
 						if role_mapping.role_or_role_profile == "Role Profile":
-							if user.role_profile_name == role_mapping.saml_role == role:
+							if user.role_profile_name == role_mapping.user_role:
 								break
-							elif role_mapping.saml_role == role:
-								user.role_profile_name = role_mapping.user_role
-								user.save(ignore_permissions=True)
-								break
+							user.role_profile_name = role_mapping.user_role
+							user.save(ignore_permissions=True)
+							break
 						else:
 							if user.role_profile_name:
 								user.roles = []

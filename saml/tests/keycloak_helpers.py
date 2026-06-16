@@ -6,6 +6,7 @@ import re
 import time
 import base64
 import xml.etree.ElementTree as ET
+from html import unescape
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
@@ -183,6 +184,18 @@ def parse_forms(html, base_url):
 			action = urljoin(base_url, action)
 		forms.append({"action": action, "fields": form["fields"]})
 	return forms
+
+
+def extract_saml_provider_login_url(html, provider=None):
+	provider = provider or get_test_saml_provider()
+	match = re.search(
+		rf'href="([^"]*saml\.saml\.login\?provider={re.escape(provider)}[^"]*)"',
+		html,
+		flags=re.IGNORECASE,
+	)
+	if not match:
+		return None
+	return unescape(match.group(1))
 
 
 def keycloak_error_message(html):
@@ -649,6 +662,12 @@ def complete_http_auto_saml_home_login(username, password, base_url=None):
 			fields["password"] = password
 			response = session.post(login_form["action"], data=fields, allow_redirects=True, timeout=30)
 			continue
+
+		if "/login" in response.url:
+			saml_login_url = extract_saml_provider_login_url(response.text)
+			if saml_login_url:
+				response = session.get(saml_login_url, allow_redirects=True, timeout=30)
+				continue
 
 		if response.cookies.get("user_id") not in (None, "Guest"):
 			return session, response

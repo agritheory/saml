@@ -9,6 +9,7 @@ from croniter import CroniterBadCronError, croniter
 from frappe import _
 from frappe.model.document import Document
 from frappe.utils import get_datetime, now_datetime
+from frappe.utils.caching import request_cache
 
 import requests
 from onelogin.saml2.auth import OneLogin_Saml2_Settings
@@ -63,6 +64,16 @@ class SAMLLoginKey(Document):
 		self.validate_auto_saml_login_exclusivity()
 		self.validate_auto_saml_paths()
 		self.validate_idp_metadata_sync_cron()
+
+	def on_update(self):
+		auto_saml_fields = (
+			"enable_saml_login",
+			"auto_saml_login",
+			"auto_saml_scope",
+			"auto_saml_paths",
+		)
+		if any(self.has_value_changed(field) for field in auto_saml_fields):
+			clear_auto_saml_settings_cache()
 
 	def validate_auto_saml_paths(self):
 		if not self.auto_saml_login or not self.enable_saml_login:
@@ -246,6 +257,14 @@ def run_scheduled_idp_metadata_syncs():
 			)
 
 
+def clear_auto_saml_settings_cache():
+	if hasattr(frappe.local, "request_cache"):
+		cached_func = getattr(get_auto_saml_settings, "__wrapped__", None)
+		if cached_func:
+			frappe.local.request_cache.pop(cached_func, None)
+
+
+@request_cache
 def get_auto_saml_settings() -> dict | None:
 	providers = frappe.get_all(
 		"SAML Login Key",
@@ -256,6 +275,9 @@ def get_auto_saml_settings() -> dict | None:
 	if len(providers) != 1:
 		return None
 	return providers[0]
+
+
+get_auto_saml_settings.clear_cache = clear_auto_saml_settings_cache
 
 
 def get_auto_saml_provider() -> str | None:

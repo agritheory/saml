@@ -19,9 +19,9 @@ AUTO_SAML_EXCLUDED_PATHS = (
 	"/api/method/saml.saml.login",
 	"/api/method/saml.saml.acs",
 	"/api/method/saml.saml.logout.slo",
-	"/",
 	"/logout",
 	"/login",
+	"/",
 )
 
 AUTO_SAML_EXCLUDED_EXTENSIONS = (
@@ -44,6 +44,7 @@ AUTO_SAML_EXCLUDED_EXTENSIONS = (
 AUTO_SAML_SCOPE_ALL_GUEST_ROUTES = "All Guest Routes"
 AUTO_SAML_SCOPE_CONFIGURED_PATHS = "Configured Paths"
 AUTO_SAML_SCOPE_DESK_ONLY = "Desk Only"
+PASSIVE_SAML_SKIP_PARAM = "skip_passive_saml"
 
 
 def normalize_request_path(path: str) -> str:
@@ -72,6 +73,17 @@ def before_request():
 
 	if path == "/" and get_auto_saml_provider():
 		redirect_to_login_page(request)
+		return
+
+	if path == "/login":
+		provider = get_auto_saml_provider()
+		if not provider:
+			return
+
+		if should_skip_passive_saml_on_login(request):
+			return
+
+		initiate_saml_login(provider, redirect_to=get_auto_saml_redirect_to(request), passive=True)
 		return
 
 	if not should_auto_saml_login(path):
@@ -151,17 +163,57 @@ def get_auto_saml_redirect_to(request) -> str:
 
 
 def redirect_to_login_page(request):
+	login_path = build_login_page_path(request)
+	frappe.local.response["type"] = "redirect"
+	frappe.local.response["location"] = login_path
+	frappe.local.flags.saml_auto_redirect_url = login_path
+	frappe.local.flags.redirect_location = login_path
+
+
+def build_login_page_path(request=None) -> str:
 	login_path = "/login"
+	if not request:
+		return login_path
+
 	query_string = request.query_string
 	if isinstance(query_string, bytes):
 		query_string = query_string.decode()
 	if query_string:
 		login_path = f"{login_path}?{query_string}"
+	return login_path
 
+
+def redirect_to_login_after_passive_failure(relay_state: str | None):
+	from saml.saml import sanitize_redirect_path
+
+	login_path = sanitize_redirect_path(relay_state) or "/login"
+	login_path = append_skip_passive_saml_to_login_path(login_path)
 	frappe.local.response["type"] = "redirect"
 	frappe.local.response["location"] = login_path
-	frappe.local.flags.saml_auto_redirect_url = login_path
-	frappe.local.flags.redirect_location = login_path
+
+
+def should_skip_passive_saml_on_login(request) -> bool:
+	return bool(request.args.get(PASSIVE_SAML_SKIP_PARAM))
+
+
+def append_skip_passive_saml_to_login_path(login_path: str) -> str:
+	from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+
+	parsed = urlparse(login_path)
+	params = parse_qs(parsed.query, keep_blank_values=True)
+	params[PASSIVE_SAML_SKIP_PARAM] = ["1"]
+	return urlunparse(parsed._replace(query=urlencode(params, doseq=True)))
+
+
+def is_login_relay_state(relay_state: str | None) -> bool:
+	from saml.saml import sanitize_redirect_path
+	from urllib.parse import urlparse
+
+	path = sanitize_redirect_path(relay_state)
+	if not path:
+		return False
+
+	return normalize_request_path(urlparse(path).path) == "/login"
 
 
 def initiate_saml_login(

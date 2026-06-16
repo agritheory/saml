@@ -618,6 +618,8 @@ def complete_http_auto_saml_home_login(username, password, base_url=None):
 	base_url = (base_url or get_bench_base_url()).rstrip("/")
 	session = requests.Session()
 	response = session.get(f"{base_url}/", allow_redirects=True, timeout=30)
+	if "/login" in response.url:
+		response = session.get(f"{base_url}/app", allow_redirects=True, timeout=30)
 
 	for _ in range(10):
 		error_message = keycloak_error_message(response.text)

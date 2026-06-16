@@ -253,7 +253,27 @@ def test_before_request_skips_auto_saml_for_website_script():
 
 
 @pytest.mark.order(7)
-def test_before_request_skips_auto_saml_for_login_page():
+def test_before_request_skips_auto_saml_for_login_page_after_passive_failure():
+	saml_key = get_test_saml_login_key()
+	original_login = saml_key.auto_saml_login
+	original_scope = saml_key.auto_saml_scope
+	saml_key.auto_saml_login = True
+	saml_key.auto_saml_scope = "All Guest Routes"
+	saml_key.save(ignore_permissions=True)
+	try:
+		keycloak.setup_guest_get_request("/login?skip_passive_saml=1")
+		frappe.local.response = frappe._dict()
+		before_request()
+		assert frappe.local.response.get("type") != "redirect"
+		assert not frappe.local.flags.get("saml_auto_redirect_url")
+	finally:
+		saml_key.auto_saml_login = original_login
+		saml_key.auto_saml_scope = original_scope
+		saml_key.save(ignore_permissions=True)
+
+
+@pytest.mark.order(7)
+def test_before_request_triggers_passive_saml_for_login_page():
 	saml_key = get_test_saml_login_key()
 	original_login = saml_key.auto_saml_login
 	original_scope = saml_key.auto_saml_scope
@@ -263,9 +283,10 @@ def test_before_request_skips_auto_saml_for_login_page():
 	try:
 		keycloak.setup_guest_get_request("/login")
 		frappe.local.response = frappe._dict()
+		frappe.local.flags.pop("saml_auto_redirect_url", None)
 		before_request()
-		assert frappe.local.response.get("type") != "redirect"
-		assert not frappe.local.flags.get("saml_auto_redirect_url")
+		assert frappe.local.response.get("type") == "redirect"
+		assert frappe.local.flags.get("saml_auto_redirect_url")
 	finally:
 		saml_key.auto_saml_login = original_login
 		saml_key.auto_saml_scope = original_scope
@@ -414,6 +435,18 @@ def test_acs_passive_failure_retries_interactive_login(keycloak_session):
 		decoded = decoded.decode()
 	assert 'IsPassive="true"' not in decoded
 	assert "IsPassive='true'" not in decoded
+
+
+@pytest.mark.order(12)
+def test_acs_passive_failure_with_login_relay_state_returns_to_login_page(keycloak_session):
+	saml_response, relay_state, acs_url = keycloak.fetch_keycloak_passive_failure_saml(
+		redirect_to="/login"
+	)
+	assert relay_state == "/login"
+
+	keycloak.invoke_acs(saml_response, relay_state)
+	assert frappe.local.response.get("type") == "redirect"
+	assert frappe.local.response["location"] == "/login?skip_passive_saml=1"
 
 
 @pytest.mark.order(12)
@@ -1009,7 +1042,7 @@ def test_auto_saml_e2e_with_idp_session(keycloak_session):
 
 
 @pytest.mark.order(73)
-def test_auto_saml_skips_login_page_with_idp_session(keycloak_session):
+def test_auto_saml_e2e_with_idp_session_on_login(keycloak_session):
 	saml_key = get_test_saml_login_key()
 	original_login = saml_key.auto_saml_login
 	original_scope = saml_key.auto_saml_scope
@@ -1017,14 +1050,11 @@ def test_auto_saml_skips_login_page_with_idp_session(keycloak_session):
 	saml_key.auto_saml_scope = "All Guest Routes"
 	saml_key.save(ignore_permissions=True)
 	try:
-		keycloak.establish_keycloak_idp_session("warehouse", "apc-warehouse")
-		keycloak.setup_guest_get_request("/login")
-		frappe.local.response = frappe._dict()
-		frappe.local.flags.pop("saml_auto_redirect_url", None)
-		frappe.local.flags.pop("redirect_location", None)
-		before_request()
-		assert frappe.local.response.get("type") != "redirect"
-		assert not frappe.local.flags.get("saml_auto_redirect_url")
+		session = keycloak.establish_keycloak_idp_session("warehouse", "apc-warehouse")
+		saml_response, relay_state = keycloak.complete_guest_auto_saml_login(session, path="/login")
+		assert relay_state == "/login"
+		keycloak.invoke_acs(saml_response, relay_state)
+		assert frappe.db.exists("User", "warehouse@ambrosiapieco.example")
 	finally:
 		saml_key.auto_saml_login = original_login
 		saml_key.auto_saml_scope = original_scope

@@ -217,6 +217,17 @@ def acs():
 		saml_key = frappe.get_doc("SAML Login Key", provider)
 		client, errors, error_reason = process_saml_acs_response(saml_key, provider, post_data)
 
+		from saml.saml.auth import (
+			is_login_relay_state,
+			redirect_to_login_after_passive_failure,
+		)
+
+		if is_login_relay_state(post_data.get("RelayState")) and should_retry_interactive_saml_login(
+			errors, error_reason, post_data
+		):
+			redirect_to_login_after_passive_failure(post_data.get("RelayState"))
+			return
+
 		if should_retry_interactive_saml_login(errors, error_reason, post_data):
 			redirect_to_interactive_saml_login(provider, post_data)
 			return

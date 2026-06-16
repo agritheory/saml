@@ -18,7 +18,10 @@ AUTO_SAML_EXCLUDED_PREFIXES = (
 AUTO_SAML_EXCLUDED_PATHS = (
 	"/api/method/saml.saml.login",
 	"/api/method/saml.saml.acs",
+	"/api/method/saml.saml.logout.slo",
+	"/",
 	"/logout",
+	"/login",
 )
 
 AUTO_SAML_EXCLUDED_EXTENSIONS = (
@@ -43,8 +46,18 @@ AUTO_SAML_SCOPE_CONFIGURED_PATHS = "Configured Paths"
 AUTO_SAML_SCOPE_DESK_ONLY = "Desk Only"
 
 
+def normalize_request_path(path: str) -> str:
+	path = path or "/"
+	if len(path) > 1:
+		path = path.rstrip("/")
+	return path
+
+
 def extend_bootinfo(bootinfo):
+	from saml.saml.logout import uses_custom_logout_redirect
+
 	bootinfo["saml_auto_saml_login"] = bool(get_auto_saml_provider())
+	bootinfo["saml_custom_logout_redirect"] = uses_custom_logout_redirect()
 
 
 def before_request():
@@ -55,7 +68,12 @@ def before_request():
 	if not request or request.method != "GET":
 		return
 
-	path = request.path or ""
+	path = normalize_request_path(request.path or "")
+
+	if path == "/" and get_auto_saml_provider():
+		redirect_to_login_page(request)
+		return
+
 	if not should_auto_saml_login(path):
 		return
 
@@ -77,6 +95,7 @@ def website_path_resolver(path):
 
 
 def should_auto_saml_login(path: str) -> bool:
+	path = normalize_request_path(path)
 	if is_auto_saml_excluded_path(path):
 		return False
 
@@ -95,6 +114,7 @@ def should_auto_saml_login(path: str) -> bool:
 
 
 def is_auto_saml_excluded_path(path: str) -> bool:
+	path = normalize_request_path(path)
 	if path in AUTO_SAML_EXCLUDED_PATHS:
 		return True
 	if any(path.startswith(prefix) for prefix in AUTO_SAML_EXCLUDED_PREFIXES):
@@ -128,6 +148,20 @@ def get_auto_saml_redirect_to(request) -> str:
 	if query_string:
 		return f"{path}?{query_string}"
 	return path
+
+
+def redirect_to_login_page(request):
+	login_path = "/login"
+	query_string = request.query_string
+	if isinstance(query_string, bytes):
+		query_string = query_string.decode()
+	if query_string:
+		login_path = f"{login_path}?{query_string}"
+
+	frappe.local.response["type"] = "redirect"
+	frappe.local.response["location"] = login_path
+	frappe.local.flags.saml_auto_redirect_url = login_path
+	frappe.local.flags.redirect_location = login_path
 
 
 def initiate_saml_login(

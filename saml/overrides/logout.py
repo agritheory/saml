@@ -4,29 +4,29 @@
 import frappe
 from frappe import _
 
-from saml.saml.doctype.saml_login_key.saml_login_key import get_auto_saml_provider
-
-LOGOUT_PAGE_PATH = "/logout"
+from saml.saml.logout import LOGOUT_PAGE_PATH, clear_local_session, get_logout_redirect_url
 
 
-def redirect_to_logout_page():
+def redirect_to_url(url: str):
 	frappe.local.response["type"] = "redirect"
-	frappe.local.response["location"] = LOGOUT_PAGE_PATH
+	frappe.local.response["location"] = url
 
 
 @frappe.whitelist(allow_guest=True)
 def logout():
-	frappe.local.login_manager.logout()
-	frappe.db.commit()
+	redirect_url = get_logout_redirect_url()
+	clear_local_session()
+	if redirect_url:
+		return {"redirect_to": redirect_url}
 
 
 @frappe.whitelist(allow_guest=True)
 def web_logout():
-	frappe.local.login_manager.logout()
-	frappe.db.commit()
+	redirect_url = get_logout_redirect_url()
+	clear_local_session()
 
-	if get_auto_saml_provider():
-		redirect_to_logout_page()
+	if redirect_url:
+		redirect_to_url(redirect_url)
 		return
 
 	frappe.respond_as_web_page(

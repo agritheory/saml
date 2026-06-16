@@ -143,8 +143,8 @@ def test_should_auto_saml_login_all_guest_routes():
 	saml_key.auto_saml_scope = "All Guest Routes"
 	saml_key.save(ignore_permissions=True)
 	try:
-		assert should_auto_saml_login("/login")
-		assert should_auto_saml_login("/")
+		assert not should_auto_saml_login("/")
+		assert not should_auto_saml_login("/login")
 		assert should_auto_saml_login("/app/user/user-001")
 		assert not should_auto_saml_login("/api/method/saml.saml.login")
 		assert not should_auto_saml_login("/api/method/saml.saml.acs")
@@ -186,8 +186,8 @@ def test_should_auto_saml_login_configured_paths():
 	saml_key.auto_saml_paths = "/\n/login\n/app\n/app/*"
 	saml_key.save(ignore_permissions=True)
 	try:
-		assert should_auto_saml_login("/login")
-		assert should_auto_saml_login("/")
+		assert not should_auto_saml_login("/login")
+		assert not should_auto_saml_login("/")
 		assert should_auto_saml_login("/app/workspace")
 		assert not should_auto_saml_login("/about")
 	finally:
@@ -223,10 +223,14 @@ def test_auto_saml_validate_requires_configured_paths():
 @pytest.mark.order(7)
 def test_is_auto_saml_excluded_path():
 	assert is_auto_saml_excluded_path("/api/method/saml.saml.login")
+	assert is_auto_saml_excluded_path("/api/method/saml.saml.logout.slo")
 	assert is_auto_saml_excluded_path("/assets/saml/css/login.css")
 	assert is_auto_saml_excluded_path("/website_script.js")
 	assert is_auto_saml_excluded_path("/logout")
-	assert not is_auto_saml_excluded_path("/login")
+	assert is_auto_saml_excluded_path("/login")
+	assert is_auto_saml_excluded_path("/")
+	assert is_auto_saml_excluded_path("/login/")
+	assert not is_auto_saml_excluded_path("/about")
 
 
 @pytest.mark.order(7)
@@ -242,6 +246,26 @@ def test_before_request_skips_auto_saml_for_website_script():
 		frappe.local.response = frappe._dict()
 		before_request()
 		assert frappe.local.response.get("type") != "redirect"
+	finally:
+		saml_key.auto_saml_login = original_login
+		saml_key.auto_saml_scope = original_scope
+		saml_key.save(ignore_permissions=True)
+
+
+@pytest.mark.order(7)
+def test_before_request_skips_auto_saml_for_login_page():
+	saml_key = get_test_saml_login_key()
+	original_login = saml_key.auto_saml_login
+	original_scope = saml_key.auto_saml_scope
+	saml_key.auto_saml_login = True
+	saml_key.auto_saml_scope = "All Guest Routes"
+	saml_key.save(ignore_permissions=True)
+	try:
+		keycloak.setup_guest_get_request("/login")
+		frappe.local.response = frappe._dict()
+		before_request()
+		assert frappe.local.response.get("type") != "redirect"
+		assert not frappe.local.flags.get("saml_auto_redirect_url")
 	finally:
 		saml_key.auto_saml_login = original_login
 		saml_key.auto_saml_scope = original_scope
@@ -268,7 +292,7 @@ def test_before_request_skips_auto_saml_for_logout_page():
 
 
 @pytest.mark.order(7)
-def test_auto_saml_home_triggers_saml_but_not_website_script():
+def test_before_request_redirects_root_to_login_when_auto_saml_enabled():
 	saml_key = get_test_saml_login_key()
 	original_login = saml_key.auto_saml_login
 	original_scope = saml_key.auto_saml_scope
@@ -280,9 +304,30 @@ def test_auto_saml_home_triggers_saml_but_not_website_script():
 		frappe.local.response = frappe._dict()
 		before_request()
 		assert frappe.local.response.get("type") == "redirect"
+		assert frappe.local.response.get("location") == "/login"
+		assert frappe.local.flags.get("saml_auto_redirect_url") == "/login"
+	finally:
+		saml_key.auto_saml_login = original_login
+		saml_key.auto_saml_scope = original_scope
+		saml_key.save(ignore_permissions=True)
+
+
+@pytest.mark.order(7)
+def test_auto_saml_guest_route_triggers_saml_but_not_website_script():
+	saml_key = get_test_saml_login_key()
+	original_login = saml_key.auto_saml_login
+	original_scope = saml_key.auto_saml_scope
+	saml_key.auto_saml_login = True
+	saml_key.auto_saml_scope = "All Guest Routes"
+	saml_key.save(ignore_permissions=True)
+	try:
+		keycloak.setup_guest_get_request("/about")
+		frappe.local.response = frappe._dict()
+		before_request()
+		assert frappe.local.response.get("type") == "redirect"
 		redirect_url = frappe.local.response["location"]
 		relay_state = parse_qs(urlparse(redirect_url).query).get("RelayState", [None])[0]
-		assert relay_state == "/"
+		assert relay_state == "/about"
 		assert "website_script.js" not in redirect_url
 
 		keycloak.setup_guest_get_request("/website_script.js")
@@ -964,7 +1009,7 @@ def test_auto_saml_e2e_with_idp_session(keycloak_session):
 
 
 @pytest.mark.order(73)
-def test_auto_saml_e2e_with_idp_session_on_login(keycloak_session):
+def test_auto_saml_skips_login_page_with_idp_session(keycloak_session):
 	saml_key = get_test_saml_login_key()
 	original_login = saml_key.auto_saml_login
 	original_scope = saml_key.auto_saml_scope
@@ -972,12 +1017,14 @@ def test_auto_saml_e2e_with_idp_session_on_login(keycloak_session):
 	saml_key.auto_saml_scope = "All Guest Routes"
 	saml_key.save(ignore_permissions=True)
 	try:
-		session = keycloak.establish_keycloak_idp_session("warehouse", "apc-warehouse")
-		redirect_path = "/login"
-		saml_response, relay_state = keycloak.complete_guest_auto_saml_login(session, path=redirect_path)
-		assert relay_state == redirect_path
-		keycloak.invoke_acs(saml_response, relay_state)
-		assert frappe.db.exists("User", "warehouse@ambrosiapieco.example")
+		keycloak.establish_keycloak_idp_session("warehouse", "apc-warehouse")
+		keycloak.setup_guest_get_request("/login")
+		frappe.local.response = frappe._dict()
+		frappe.local.flags.pop("saml_auto_redirect_url", None)
+		frappe.local.flags.pop("redirect_location", None)
+		before_request()
+		assert frappe.local.response.get("type") != "redirect"
+		assert not frappe.local.flags.get("saml_auto_redirect_url")
 	finally:
 		saml_key.auto_saml_login = original_login
 		saml_key.auto_saml_scope = original_scope
@@ -985,7 +1032,7 @@ def test_auto_saml_e2e_with_idp_session_on_login(keycloak_session):
 
 
 @pytest.mark.order(74)
-def test_auto_saml_e2e_with_idp_session_on_home(keycloak_session):
+def test_auto_saml_e2e_with_idp_session_on_app(keycloak_session):
 	saml_key = get_test_saml_login_key()
 	original_login = saml_key.auto_saml_login
 	original_scope = saml_key.auto_saml_scope
@@ -994,7 +1041,7 @@ def test_auto_saml_e2e_with_idp_session_on_home(keycloak_session):
 	saml_key.save(ignore_permissions=True)
 	try:
 		session = keycloak.establish_keycloak_idp_session("warehouse", "apc-warehouse")
-		redirect_path = "/"
+		redirect_path = "/app"
 		saml_response, relay_state = keycloak.complete_guest_auto_saml_login(session, path=redirect_path)
 		assert relay_state == redirect_path
 		keycloak.invoke_acs(saml_response, relay_state)
@@ -1006,7 +1053,7 @@ def test_auto_saml_e2e_with_idp_session_on_home(keycloak_session):
 
 
 @pytest.mark.order(75)
-def test_auto_saml_home_with_keycloak_login_form(keycloak_session):
+def test_auto_saml_app_with_keycloak_login_form(keycloak_session):
 	saml_key = get_test_saml_login_key()
 	original_login = saml_key.auto_saml_login
 	original_scope = saml_key.auto_saml_scope
@@ -1015,15 +1062,15 @@ def test_auto_saml_home_with_keycloak_login_form(keycloak_session):
 	saml_key.save(ignore_permissions=True)
 	try:
 		saml_response, relay_state = keycloak.complete_guest_auto_saml_login_with_credentials(
-			"warehouse", "apc-warehouse", path="/"
+			"warehouse", "apc-warehouse", path="/app"
 		)
-		assert relay_state == "/"
+		assert relay_state == "/app"
 		keycloak.invoke_acs(saml_response, relay_state)
 		assert frappe.local.response.get("type") == "redirect"
 		assert frappe.db.exists("User", "warehouse@ambrosiapieco.example")
-		assert "/" in frappe.local.response.get("location", "") or "%2F" in frappe.local.response.get(
+		assert "/app" in frappe.local.response.get(
 			"location", ""
-		)
+		) or "%2Fapp" in frappe.local.response.get("location", "")
 	finally:
 		saml_key.auto_saml_login = original_login
 		saml_key.auto_saml_scope = original_scope
@@ -1169,3 +1216,112 @@ def test_get_context_builds_login_page_with_saml_providers():
 		assert any(provider["name"] == saml_key.name for provider in context.provider_logins)
 	finally:
 		frappe.set_user("Administrator")
+
+
+@pytest.mark.order(80)
+def test_get_settings_includes_slo_when_terminate_enabled():
+	saml_key = get_test_saml_login_key()
+	original_terminate = saml_key.terminate_saml_session_on_logout
+	saml_key.terminate_saml_session_on_logout = True
+	try:
+		acs_url = frappe.utils.get_url(f"/api/method/saml.saml.acs?provider={saml_key.name}")
+		slo_url = frappe.utils.get_url(f"/api/method/saml.saml.logout.slo?provider={saml_key.name}")
+		settings = saml_key.get_settings(acs_url, slo_url=slo_url)
+		sp_data = settings.get_sp_data()
+		idp_data = settings.get_idp_data()
+		assert sp_data["singleLogoutService"]["url"] == slo_url
+		assert idp_data["singleLogoutService"]["url"] == saml_key.idp_sso_url
+		assert settings.get_security_data()["logoutRequestSigned"] is True
+	finally:
+		saml_key.terminate_saml_session_on_logout = original_terminate
+
+
+@pytest.mark.order(81)
+def test_get_settings_omits_slo_without_terminate_enabled():
+	saml_key = get_test_saml_login_key()
+	original_terminate = saml_key.terminate_saml_session_on_logout
+	saml_key.terminate_saml_session_on_logout = False
+	try:
+		acs_url = frappe.utils.get_url(f"/api/method/saml.saml.acs?provider={saml_key.name}")
+		slo_url = frappe.utils.get_url(f"/api/method/saml.saml.logout.slo?provider={saml_key.name}")
+		settings = saml_key.get_settings(acs_url, slo_url=slo_url)
+		sp_data = settings.get_sp_data()
+		idp_data = settings.get_idp_data()
+		assert sp_data.get("singleLogoutService", {}).get("url") != slo_url
+		assert idp_data.get("singleLogoutService", {}).get("url") != saml_key.idp_sso_url
+	finally:
+		saml_key.terminate_saml_session_on_logout = original_terminate
+
+
+@pytest.mark.order(82)
+def test_logout_returns_slo_redirect_when_saml_session_stored():
+	from frappe.auth import CookieManager, LoginManager
+	from frappe.utils import set_request
+
+	from saml.overrides.logout import logout
+	from saml.saml.logout import (
+		SAML_SESSION_INDEX_KEY,
+		SAML_SESSION_NAME_ID_KEY,
+		SAML_SESSION_PROVIDER_KEY,
+	)
+
+	saml_key = get_test_saml_login_key()
+	original_terminate = saml_key.terminate_saml_session_on_logout
+	keycloak.set_saml_login_key_values({"terminate_saml_session_on_logout": True})
+	try:
+		set_request(method="GET", path="/app")
+		frappe.local.cookie_manager = CookieManager()
+		frappe.local.login_manager = LoginManager()
+		frappe.local.login_manager.login_as("Administrator")
+		frappe.local.session_obj.data.data[SAML_SESSION_PROVIDER_KEY] = saml_key.name
+		frappe.local.session_obj.data.data[SAML_SESSION_NAME_ID_KEY] = "admin@example.com"
+		frappe.local.session_obj.data.data[SAML_SESSION_INDEX_KEY] = "session-index-1"
+		frappe.local.session_obj.update(force=True)
+
+		result = logout()
+		redirect_to = result["redirect_to"]
+		assert redirect_to.startswith(saml_key.idp_sso_url)
+		assert "SAMLRequest=" in redirect_to
+		assert "RelayState=" in redirect_to
+		assert "%2Flogout" in redirect_to
+		assert frappe.session.user == "Guest"
+	finally:
+		keycloak.set_saml_login_key_values({"terminate_saml_session_on_logout": original_terminate})
+
+
+@pytest.mark.order(83)
+def test_web_logout_redirects_to_idp_when_saml_session_stored():
+	from frappe.auth import CookieManager, LoginManager
+	from frappe.utils import set_request
+
+	from saml.overrides.logout import web_logout
+	from saml.saml.logout import (
+		SAML_SESSION_INDEX_KEY,
+		SAML_SESSION_NAME_ID_KEY,
+		SAML_SESSION_PROVIDER_KEY,
+	)
+
+	saml_key = get_test_saml_login_key()
+	original_terminate = saml_key.terminate_saml_session_on_logout
+	keycloak.set_saml_login_key_values({"terminate_saml_session_on_logout": True})
+	try:
+		set_request(method="GET", path="/app")
+		frappe.local.cookie_manager = CookieManager()
+		frappe.local.login_manager = LoginManager()
+		frappe.local.login_manager.login_as("Administrator")
+		frappe.local.session_obj.data.data[SAML_SESSION_PROVIDER_KEY] = saml_key.name
+		frappe.local.session_obj.data.data[SAML_SESSION_NAME_ID_KEY] = "admin@example.com"
+		frappe.local.session_obj.data.data[SAML_SESSION_INDEX_KEY] = "session-index-1"
+		frappe.local.session_obj.update(force=True)
+		frappe.local.response = frappe._dict()
+
+		web_logout()
+		redirect_to = frappe.local.response.get("location")
+		assert frappe.local.response.get("type") == "redirect"
+		assert redirect_to.startswith(saml_key.idp_sso_url)
+		assert "SAMLRequest=" in redirect_to
+		assert "RelayState=" in redirect_to
+		assert "%2Flogout" in redirect_to
+		assert frappe.session.user == "Guest"
+	finally:
+		keycloak.set_saml_login_key_values({"terminate_saml_session_on_logout": original_terminate})

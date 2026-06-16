@@ -14,6 +14,7 @@ def modify_realm_urls(realm_data: dict[str, Any], base_url: str) -> dict[str, An
 				print(f"Found frappe-saml client, updating URLs to {base_url}")
 
 				acs_path = "/api/method/saml.saml.acs"
+				slo_path = "/api/method/saml.saml.logout.slo?provider=keycloak"
 				client["rootUrl"] = base_url
 				client["baseUrl"] = base_url
 				client["redirectUris"] = [
@@ -22,6 +23,10 @@ def modify_realm_urls(realm_data: dict[str, Any], base_url: str) -> dict[str, An
 					f"{base_url}{acs_path}?provider=keycloak",
 				]
 				client["webOrigins"] = [base_url]
+				attributes = client.setdefault("attributes", {})
+				attributes["saml_single_logout_service_url_redirect"] = f"{base_url}{slo_path}"
+				attributes["saml_single_logout_service_url_post"] = f"{base_url}{slo_path}"
+				break
 	return modified_data
 
 

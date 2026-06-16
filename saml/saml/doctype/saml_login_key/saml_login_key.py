@@ -127,34 +127,56 @@ class SAMLLoginKey(Document):
 				row.idx = index
 				self.roles.append(row)
 
-	def get_settings(self, acs_url: str):
+	def get_idp_slo_url(self) -> str | None:
+		return self.idp_sso_url
+
+	def get_settings(self, acs_url: str, slo_url: str | None = None):
+		security = {
+			"authnRequestsSigned": bool(self.sp_private_key),
+			"requestedAuthnContext": False,
+			"signatureAlgorithm": "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256",
+			"digestAlgorithm": "http://www.w3.org/2001/04/xmlenc#sha256",
+			"rejectUnsolicitedResponsesWithInResponseTo": False,
+		}
+		sp = {
+			"entityId": self.sp_entity_id,
+			"assertionConsumerService": {
+				"url": acs_url,
+				"binding": "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST",
+			},
+			"privateKey": self.get_password("sp_private_key") if self.sp_private_key else "",
+			"x509cert": self.sp_x509cert,
+		}
+		idp = {
+			"entityId": self.idp_entity_id,
+			"singleSignOnService": {
+				"url": self.idp_sso_url,
+				"binding": "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect",
+			},
+			"x509cert": self.idp_x509cert,
+		}
+
+		if slo_url and self.terminate_saml_session_on_logout:
+			idp_slo_url = self.get_idp_slo_url()
+			if idp_slo_url:
+				sp["singleLogoutService"] = {
+					"url": slo_url,
+					"binding": "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect",
+				}
+				idp["singleLogoutService"] = {
+					"url": idp_slo_url,
+					"binding": "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect",
+				}
+				if self.sp_private_key:
+					security["logoutRequestSigned"] = True
+					security["logoutResponseSigned"] = True
+
 		return OneLogin_Saml2_Settings(
 			{
 				"strict": not self.allow_relaxed_saml_validation,
-				"sp": {
-					"entityId": self.sp_entity_id,
-					"assertionConsumerService": {
-						"url": acs_url,
-						"binding": "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST",
-					},
-					"privateKey": self.get_password("sp_private_key") if self.sp_private_key else "",
-					"x509cert": self.sp_x509cert,
-				},
-				"idp": {
-					"entityId": self.idp_entity_id,
-					"singleSignOnService": {
-						"url": self.idp_sso_url,
-						"binding": "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect",
-					},
-					"x509cert": self.idp_x509cert,
-				},
-				"security": {
-					"authnRequestsSigned": bool(self.sp_private_key),
-					"requestedAuthnContext": False,
-					"signatureAlgorithm": "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256",
-					"digestAlgorithm": "http://www.w3.org/2001/04/xmlenc#sha256",
-					"rejectUnsolicitedResponsesWithInResponseTo": False,
-				},
+				"sp": sp,
+				"idp": idp,
+				"security": security,
 			}
 		)
 

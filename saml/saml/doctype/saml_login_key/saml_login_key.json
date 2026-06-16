@@ -59,7 +59,7 @@
 		},
 		{
 			"depends_on": "eval:doc.enable_saml_login && doc.auto_saml_login && doc.auto_saml_scope=='Configured Paths'",
-			"description": "One path per line. Use a trailing /* for prefix match (for example /app/*). /login covers all login hash sections (/login#login, etc.).",
+			"description": "One path per line. Use a trailing /* for prefix match (for example /app/*). /login is always excluded from auto SAML.",
 			"fieldname": "auto_saml_paths",
 			"fieldtype": "Small Text",
 			"label": "Auto SAML Paths"
@@ -181,6 +181,8 @@
 		},
 		{
 			"default": "0",
+			"depends_on": "eval:doc.enable_saml_login",
+			"description": "When enabled, logout sends a SAML Single Logout request to the IdP before redirecting to the logged-out page.",
 			"fieldname": "terminate_saml_session_on_logout",
 			"fieldtype": "Check",
 			"label": "Terminate SAML Session on logout"

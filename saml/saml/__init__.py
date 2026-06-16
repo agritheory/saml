@@ -313,6 +313,9 @@ def acs():
 		# Log the user in
 		frappe.local.login_manager.user = user.name
 		frappe.local.login_manager.post_login()
+		from saml.saml.logout import store_saml_session_data
+
+		store_saml_session_data(client, provider)
 		frappe.db.commit()
 		redirect_to = sanitize_redirect_path(post_data.get("RelayState"))
 

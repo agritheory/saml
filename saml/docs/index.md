@@ -4,7 +4,7 @@ For license information, please see license.txt-->
 # SAML Integration
 
 <div class="byline">
-  Tyler Matteson 2026-06-13
+  Tyler Matteson 2026-06-15
 </div>
 
 
@@ -41,16 +41,28 @@ When **Auto SAML Login** is enabled on a SAML Login Key, guest requests matching
 **Auto SAML Scope** controls which guest requests trigger auto SAML:
 
 - **All Guest Routes** (default): every guest page load, recommended for private SSO-mandatory sites with no public content. Built-in exclusions always apply (see below).
-- **Configured Paths**: only paths listed in **Auto SAML Paths**, one per line. Use a trailing `/*` for prefix match (for example `/app/*` matches `/app/user/user-001` in Frappe v15 path-based Desk routing). `/login` covers all login hash sections (`/login#login`, `#forgot`, etc.) because hashes are client-side only.
+- **Configured Paths**: only paths listed in **Auto SAML Paths**, one per line. Use a trailing `/*` for prefix match (for example `/app/*` matches `/app/user/user-001` in Frappe v15 path-based Desk routing).
 - **Desk Only**: legacy behavior — only `/app` and `/app/*`.
 
 Requirements and notes:
 
 - Only one enabled SAML Login Key may use Auto SAML Login at a time.
-- Built-in exclusions (not configurable): `/api/*`, `/assets/*`, `/files/*`, `/private/*`, static file paths (for example `/website_script.js`), `/logout`, and the SAML login/ACS API methods. These paths never trigger auto SAML.
+- Built-in exclusions (not configurable): `/api/*`, `/assets/*`, `/files/*`, `/private/*`, static file paths (for example `/website_script.js`), `/`, `/login`, `/logout`, and the SAML login/ACS/SLO API methods. These paths never trigger auto SAML. When Auto SAML Login is enabled, `/` redirects to `/login` so guests can choose their sign-in method. SAML users can use the SAML button on the login page; `/app` and other guest routes still use passive SSO.
 - HTTP redirects between ERPNext and the IdP are still required for SAML; this setting removes the ERPNext login page and IdP password prompt when the IdP session is already valid.
 - After a successful login, ERPNext stores a session cookie (`sid`) on the ERPNext domain. Subsequent visits use that cookie until the session expires.
 - When Auto SAML Login is enabled, logout sends users to `/logout` instead of `/login`, so they are not immediately signed back in through passive SSO. Use **Log in again** on that page when you want to start a new session.
+
+### SAML Single Logout
+
+When **Terminate SAML Session on logout** is enabled on a SAML Login Key, logging out of Frappe also sends a SAML Single Logout (SLO) request to the IdP. This ends the IdP browser session so users are not silently signed back in on the next visit.
+
+Requirements:
+
+- The IdP must support SAML Single Logout.
+- Your SP private key and certificate must be configured (logout requests are signed when a private key is present).
+- Configure the IdP with your SLO endpoint: `https://your-site.com/api/method/saml.saml.logout.slo?provider=your_provider_name`
+
+For Keycloak, under **Fine Grain SAML Endpoint Configuration** on the SAML client, set **Logout Service Redirect Binding URL** (and optionally POST) to the SLO endpoint above. Enable **Front Channel Logout**.
 
 ### Service Provider (SP) Configuration
 
@@ -132,6 +144,8 @@ To configure Keycloak as your Identity Provider:
    - Set "Sign Assertions" to ON
 8. Under "Fine Grain SAML Endpoint Configuration":
    - Set "Assertion Consumer Service Redirect Binding URL" to your ACS URL
+   - Set "Logout Service Redirect Binding URL" to your SLO URL (`https://your-site.com/api/method/saml.saml.logout.slo?provider=your_provider_name`)
+   - Enable "Front Channel Logout"
 9. Under "Mappers" tab, create the following protocol mappers:
    - Create mapper for "X500 email" to map user email to the NameID
      - Name: "email"

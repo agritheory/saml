@@ -5,7 +5,7 @@ frappe.provide('frappe.saml')
 
 frappe.saml.patch_logout_redirect = function () {
 	if (
-		!frappe.boot?.saml_auto_saml_login ||
+		!frappe.boot?.saml_custom_logout_redirect ||
 		!frappe.Application?.prototype?.logout ||
 		frappe.saml.logout_redirect_patched
 	) {
@@ -16,8 +16,8 @@ frappe.saml.patch_logout_redirect = function () {
 		this.logged_out = true
 		return frappe.call({
 			method: 'logout',
-			callback() {
-				window.location.href = '/logout'
+			callback(r) {
+				window.location.href = r.message?.redirect_to || '/logout'
 			},
 			error() {
 				window.location.href = '/logout'

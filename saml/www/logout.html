@@ -1,0 +1,19 @@
+{% extends "templates/web.html" %} {% block navbar %}{% endblock %} {% block head_include %} {{
+include_style('login.bundle.css') }}
+<link type="text/css" rel="stylesheet" href="/assets/saml/css/login.css" />
+{% endblock %} {% block page_content %}
+<section class="for-login for-logout">
+	<div class="page-card-head">
+		<img class="app-logo" src="{{ logo }}" />
+		<h4>{{ title }}</h4>
+	</div>
+	<div class="login-content page-card">
+		<div class="page-card-body text-center">
+			<p class="text-muted logout-message">{{ message }}</p>
+		</div>
+		<div class="page-card-actions text-center">
+			<a href="/login" class="btn btn-sm btn-primary">{{ _("Log in again") }}</a>
+		</div>
+	</div>
+</section>
+{% endblock %} {% block script %}{% endblock %} {% block sidebar %}{% endblock %}

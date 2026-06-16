@@ -4,7 +4,7 @@ For license information, please see license.txt-->
 # SAML Integration
 
 <div class="byline">
-  Tyler Matteson 2026-05-06
+  Tyler Matteson 2026-06-15
 </div>
 
 
@@ -34,6 +34,36 @@ To set up a SAML provider:
 4. Check "Enable SAML Login" to activate this provider
 5. Fill in the Service Provider and Identity Provider details as outlined in the following sections
 
+### Auto SAML Login
+
+When **Auto SAML Login** is enabled on a SAML Login Key, guest requests matching the configured scope are sent to the IdP for silent SSO before ERPNext UI is shown. If the user already has an active IdP session, authentication is attempted passively (no credential prompt). If silent authentication fails, an interactive SAML login is attempted automatically.
+
+**Auto SAML Scope** controls which guest requests trigger auto SAML:
+
+- **All Guest Routes** (default): every guest page load, recommended for private SSO-mandatory sites with no public content. Built-in exclusions always apply (see below).
+- **Configured Paths**: only paths listed in **Auto SAML Paths**, one per line. Use a trailing `/*` for prefix match (for example `/app/*` matches `/app/user/user-001` in Frappe v15 path-based Desk routing).
+- **Desk Only**: legacy behavior — only `/app` and `/app/*`.
+
+Requirements and notes:
+
+- Only one enabled SAML Login Key may use Auto SAML Login at a time.
+- Built-in exclusions (not configurable): `/api/*`, `/assets/*`, `/files/*`, `/private/*`, static file paths (for example `/website_script.js`), `/`, `/login`, `/logout`, and the SAML login/ACS/SLO API methods. These paths never trigger auto SAML. When Auto SAML Login is enabled, `/` redirects to `/login` so guests can choose their sign-in method. SAML users can use the SAML button on the login page; `/app` and other guest routes still use passive SSO.
+- HTTP redirects between ERPNext and the IdP are still required for SAML; this setting removes the ERPNext login page and IdP password prompt when the IdP session is already valid.
+- After a successful login, ERPNext stores a session cookie (`sid`) on the ERPNext domain. Subsequent visits use that cookie until the session expires.
+- When Auto SAML Login is enabled, logout sends users to `/logout` instead of `/login`, so they are not immediately signed back in through passive SSO. Use **Log in again** on that page when you want to start a new session.
+
+### SAML Single Logout
+
+When **Terminate SAML Session on logout** is enabled on a SAML Login Key, logging out of Frappe also sends a SAML Single Logout (SLO) request to the IdP. This ends the IdP browser session so users are not silently signed back in on the next visit.
+
+Requirements:
+
+- The IdP must support SAML Single Logout.
+- Your SP private key and certificate must be configured (logout requests are signed when a private key is present).
+- Configure the IdP with your SLO endpoint: `https://your-site.com/api/method/saml.saml.logout.slo?provider=your_provider_name`
+
+For Keycloak, under **Fine Grain SAML Endpoint Configuration** on the SAML client, set **Logout Service Redirect Binding URL** (and optionally POST) to the SLO endpoint above. Enable **Front Channel Logout**.
+
 ### Service Provider (SP) Configuration
 
 The Service Provider is your Frappe application. Configure these settings:
@@ -61,6 +91,40 @@ Obtain the following information from your Identity Provider (such as Okta, Azur
 
 **IDP x509cert**: The public certificate provided by your IdP, used to verify signed SAML responses. Copy the full certificate provided by your IdP, excluding the `-----BEGIN CERTIFICATE-----` and `-----END CERTIFICATE-----` tags.
 
+### IdP Metadata Sync
+
+Instead of manually copying the IdP signing certificate, you can fetch it from IdP metadata on a schedule or on demand. Sync only updates **IDP x509cert**; Entity ID and SSO URL remain manual configuration.
+
+**Sync IdP Metadata**: When checked, this provider is included in the background metadata sync schedule. Requires **Enable SAML Login**.
+
+**IdP Metadata URL**: The URL fetched for IdP metadata.
+
+- Keycloak default: `{entity_id}/protocol/saml/descriptor` (for example, `http://localhost:8080/realms/myrealm/protocol/saml/descriptor`)
+- Entra ID example: `https://login.microsoftonline.com/{tenant-id}/federationmetadata/2007-06/federationmetadata.xml`
+
+When you enter an **IDP Entity ID** on a new SAML Login Key, the form auto-fills this field with the Keycloak descriptor pattern if it is empty.
+
+**IdP Metadata Sync Cron**: Per-provider cron schedule for background sync. Default: `0 6 * * *` (daily at 6:00 AM). Uses standard five-field cron syntax (minute, hour, day of month, month, day of week). Only evaluated when **Sync IdP Metadata** is checked.
+
+**Last IdP Metadata Sync**: Read-only timestamp of the last successful metadata sync.
+
+**Manual sync**: On a saved SAML Login Key with **Enable SAML Login**, use the **Sync IdP Metadata** button to fetch metadata immediately. Manual sync works whether or not scheduled sync is enabled.
+
+**Scheduler behavior**: Frappe runs an hourly background job that checks each provider with **Sync IdP Metadata** enabled. If the provider's cron schedule is due based on **Last IdP Metadata Sync**, the certificate is updated. Sync may run up to about one hour after the configured cron time. Metadata sync never runs during login or ACS processing.
+
+### Security Settings
+
+**Allow Relaxed SAML Validation**: By default, SAML responses are validated strictly according to the SAML 2.0 specification. This includes:
+
+- Destination URL validation
+- Response timing and conditions
+- Audience restriction
+- InResponseTo correlation
+
+Some older or non-compliant Identity Providers may fail strict validation. If you encounter SAML errors after upgrading or with a specific IdP, you can enable **Allow Relaxed SAML Validation** to disable these checks.
+
+> **WARNING**: Only enable relaxed validation if your IdP requires it. Strict validation protects against SAML response replay and injection attacks. When relaxed validation is enabled, ensure your IdP is properly secured and uses HTTPS.
+
 #### Common IdP Setup Examples:
 
 
@@ -80,6 +144,8 @@ To configure Keycloak as your Identity Provider:
    - Set "Sign Assertions" to ON
 8. Under "Fine Grain SAML Endpoint Configuration":
    - Set "Assertion Consumer Service Redirect Binding URL" to your ACS URL
+   - Set "Logout Service Redirect Binding URL" to your SLO URL (`https://your-site.com/api/method/saml.saml.logout.slo?provider=your_provider_name`)
+   - Enable "Front Channel Logout"
 9. Under "Mappers" tab, create the following protocol mappers:
    - Create mapper for "X500 email" to map user email to the NameID
      - Name: "email"
@@ -88,7 +154,7 @@ To configure Keycloak as your Identity Provider:
      - SAML Attribute Name: "NameID"
      - SAML Attribute NameFormat: "Basic"
 10. In the Installation tab, select "SAML Metadata IDPSSODescriptor" format to download the XML metadata
-11. Extract the following information from the metadata:
+11. Extract the following information from the metadata (or set **IdP Metadata URL** to the descriptor URL and use **Sync IdP Metadata** to fetch the certificate automatically):
     - Entity ID: The value of the `entityID` attribute in the `EntityDescriptor` element
     - SSO URL: The value of the `Location` attribute in the `SingleSignOnService` element with `Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect"`
     - X509 Certificate: The value between the `<X509Certificate>` and `</X509Certificate>` tags

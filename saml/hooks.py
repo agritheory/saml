@@ -13,7 +13,7 @@ app_license = "MIT"
 
 # include js, css files in header of desk.html
 # app_include_css = "/assets/saml/css/saml.css"
-# app_include_js = "/assets/saml/js/saml.js"
+app_include_js = ["desk_logout.bundle.js"]
 
 # include js, css files in header of web template
 # web_include_css = "/assets/saml/css/saml.css"
@@ -112,24 +112,11 @@ doc_events = {
 
 # Scheduled Tasks
 # ---------------
+# Hourly tick is the poll interval; per-provider sync timing is governed by idp_metadata_sync_cron.
 
-# scheduler_events = {
-# 	"all": [
-# 		"saml.tasks.all"
-# 	],
-# 	"daily": [
-# 		"saml.tasks.daily"
-# 	],
-# 	"hourly": [
-# 		"saml.tasks.hourly"
-# 	],
-# 	"weekly": [
-# 		"saml.tasks.weekly"
-# 	],
-# 	"monthly": [
-# 		"saml.tasks.monthly"
-# 	],
-# }
+scheduler_events = {
+	"hourly": ["saml.saml.doctype.saml_login_key.saml_login_key.run_scheduled_idp_metadata_syncs"]
+}
 
 # Testing
 # -------
@@ -139,9 +126,10 @@ doc_events = {
 # Overriding Methods
 # ------------------------------
 #
-# override_whitelisted_methods = {
-# 	"frappe.desk.doctype.event.event.get_events": "saml.event.get_events"
-# }
+override_whitelisted_methods = {
+	"logout": "saml.overrides.logout.logout",
+	"web_logout": "saml.overrides.logout.web_logout",
+}
 #
 # each overriding function accepts a `data` argument;
 # generated from the base implementation of the doctype dashboard,
@@ -161,7 +149,8 @@ doc_events = {
 
 # Request Events
 # ----------------
-# before_request = ["saml.utils.before_request"]
+before_request = ["saml.saml.auth.before_request"]
+website_path_resolver = ["saml.saml.auth.website_path_resolver"]
 # after_request = ["saml.utils.after_request"]
 
 # Job Events
@@ -199,3 +188,5 @@ doc_events = {
 # auth_hooks = ["saml.auth.authenticate"]
 
 export_python_type_annotations = True
+
+extend_bootinfo = ["saml.saml.auth.extend_bootinfo"]

@@ -61,8 +61,9 @@ disable_user_pass_login or (ldap_settings and ldap_settings.enabled) %}
 	<button class="btn btn-sm btn-default btn-block btn-login btn-ldap-login">{{ _("Login with LDAP") }}</button>
 	{% endif %}
 </div>
-{% endmacro %} {% block head_include %} {{ include_style('login.bundle.css') }} {% endblock %} {% macro
-logo_section(title=null) %}
+{% endmacro %} {% block head_include %} {{ include_style('login.bundle.css') }}
+<link type="text/css" rel="stylesheet" href="/assets/saml/css/login.css" />
+{% endblock %} {% macro logo_section(title=null) %}
 <div class="page-card-head">
 	<img class="app-logo" src="{{ logo }}" />
 	{% if title %}

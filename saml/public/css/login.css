@@ -1,0 +1,12 @@
+.login-button-wrapper:has(.btn-login-with-frappe-cloud),
+.btn-login-with-frappe-cloud {
+	display: none;
+}
+
+.for-logout .logout-message {
+	margin-bottom: 0;
+}
+
+.for-logout .page-card-actions .btn {
+	margin-top: 0;
+}

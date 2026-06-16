@@ -5,12 +5,16 @@
 	"engine": "InnoDB",
 	"field_order": [
 		"enable_saml_login",
+		"auto_saml_login",
+		"auto_saml_scope",
+		"auto_saml_paths",
 		"configuration_section",
 		"provider_name",
 		"apply_saml_roles",
 		"match_saml_roles",
 		"terminate_saml_session_on_logout",
 		"disallow_password_update",
+		"allow_relaxed_saml_validation",
 		"column_break_jwoo",
 		"saml_domains",
 		"sp_details_section",
@@ -21,6 +25,11 @@
 		"idp_entity_id",
 		"idp_x509cert",
 		"idp_sso_url",
+		"idp_metadata_sync_section",
+		"sync_idp_metadata",
+		"idp_metadata_url",
+		"idp_metadata_sync_cron",
+		"last_idp_metadata_sync",
 		"mappings_section",
 		"roles"
 	],
@@ -30,6 +39,30 @@
 			"fieldname": "enable_saml_login",
 			"fieldtype": "Check",
 			"label": "Enable SAML Login"
+		},
+		{
+			"default": "0",
+			"depends_on": "eval:doc.enable_saml_login",
+			"description": "When enabled, guest requests matching Auto SAML Scope are sent to the IdP for silent SSO before showing ERPNext UI. Only one enabled provider may use this setting.",
+			"fieldname": "auto_saml_login",
+			"fieldtype": "Check",
+			"label": "Auto SAML Login"
+		},
+		{
+			"default": "All Guest Routes",
+			"depends_on": "eval:doc.enable_saml_login && doc.auto_saml_login",
+			"description": "All Guest Routes: every guest page load except built-in API/SAML/static exclusions. Configured Paths: only paths listed below. Desk Only: legacy /app behavior.",
+			"fieldname": "auto_saml_scope",
+			"fieldtype": "Select",
+			"label": "Auto SAML Scope",
+			"options": "All Guest Routes\nConfigured Paths\nDesk Only"
+		},
+		{
+			"depends_on": "eval:doc.enable_saml_login && doc.auto_saml_login && doc.auto_saml_scope=='Configured Paths'",
+			"description": "One path per line. Use a trailing /* for prefix match (for example /app/*). /login is always excluded from auto SAML.",
+			"fieldname": "auto_saml_paths",
+			"fieldtype": "Small Text",
+			"label": "Auto SAML Paths"
 		},
 		{
 			"fieldname": "provider_name",
@@ -47,6 +80,43 @@
 			"fieldname": "idp_sso_url",
 			"fieldtype": "Data",
 			"label": "IDP SSO URL"
+		},
+		{
+			"collapsible": 1,
+			"depends_on": "eval:doc.enable_saml_login",
+			"fieldname": "idp_metadata_sync_section",
+			"fieldtype": "Section Break",
+			"label": "IdP Metadata Sync"
+		},
+		{
+			"default": "0",
+			"depends_on": "eval:doc.enable_saml_login",
+			"description": "Fetch IdP metadata on a schedule to keep the signing certificate up to date.",
+			"fieldname": "sync_idp_metadata",
+			"fieldtype": "Check",
+			"label": "Sync IdP Metadata"
+		},
+		{
+			"depends_on": "eval:doc.enable_saml_login",
+			"description": "URL fetched for IdP metadata. Keycloak: {entity_id}/protocol/saml/descriptor. Entra ID: https://login.microsoftonline.com/{tenant-id}/federationmetadata/2007-06/federationmetadata.xml",
+			"fieldname": "idp_metadata_url",
+			"fieldtype": "Data",
+			"label": "IdP Metadata URL"
+		},
+		{
+			"default": "0 6 * * *",
+			"depends_on": "eval:doc.sync_idp_metadata",
+			"description": "<pre>*  *  *  *  *\n\u252c  \u252c  \u252c  \u252c  \u252c\n\u2502  \u2502  \u2502  \u2502  \u2502\n\u2502  \u2502  \u2502  \u2502  \u2514 day of week (0 - 6) (0 is Sunday)\n\u2502  \u2502  \u2502  \u2514\u2500\u2500\u2500\u2500\u2500 month (1 - 12)\n\u2502  \u2502  \u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 day of month (1 - 31)\n\u2502  \u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 hour (0 - 23)\n\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 minute (0 - 59)\n\n---\n\n* - Any value\n/ - Step values\n</pre>\n",
+			"fieldname": "idp_metadata_sync_cron",
+			"fieldtype": "Data",
+			"label": "IdP Metadata Sync Cron"
+		},
+		{
+			"depends_on": "eval:doc.enable_saml_login",
+			"fieldname": "last_idp_metadata_sync",
+			"fieldtype": "Datetime",
+			"label": "Last IdP Metadata Sync",
+			"read_only": 1
 		},
 		{
 			"fieldname": "idp_entity_id",
@@ -111,6 +181,8 @@
 		},
 		{
 			"default": "0",
+			"depends_on": "eval:doc.enable_saml_login",
+			"description": "When enabled, logout sends a SAML Single Logout request to the IdP before redirecting to the logged-out page.",
 			"fieldname": "terminate_saml_session_on_logout",
 			"fieldtype": "Check",
 			"label": "Terminate SAML Session on logout"
@@ -121,6 +193,14 @@
 			"fieldname": "disallow_password_update",
 			"fieldtype": "Check",
 			"label": "Disallow Password Set/Reset"
+		},
+		{
+			"default": "0",
+			"depends_on": "eval:doc.enable_saml_login",
+			"description": "WARNING: Only enable if your IdP requires it. Disables destination, timing, and audience validation.",
+			"fieldname": "allow_relaxed_saml_validation",
+			"fieldtype": "Check",
+			"label": "Allow Relaxed SAML Validation"
 		},
 		{
 			"depends_on": "eval:doc.enable_saml_login",

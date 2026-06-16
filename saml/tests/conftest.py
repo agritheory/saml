@@ -43,3 +43,16 @@ def db_instance():
 	frappe.connect()
 	frappe.db.commit = MagicMock()
 	yield frappe.db
+
+
+@pytest.fixture(autouse=True)
+def reset_saml_request_state():
+	from saml.saml.doctype.saml_login_key.saml_login_key import clear_auto_saml_settings_cache
+
+	clear_auto_saml_settings_cache()
+	for key in ("saml_auto_redirect_url", "redirect_location"):
+		frappe.local.flags.pop(key, None)
+	yield
+	clear_auto_saml_settings_cache()
+	for key in ("saml_auto_redirect_url", "redirect_location"):
+		frappe.local.flags.pop(key, None)

@@ -6,20 +6,30 @@ import xml.etree.ElementTree as ET
 
 import frappe
 from frappe import _
+from frappe.utils import cint
 from frappe.utils.password import remove_encrypted_password
-from onelogin.saml2.auth import OneLogin_Saml2_Auth, OneLogin_Saml2_Settings
+from onelogin.saml2.auth import OneLogin_Saml2_Auth
 from urllib.parse import parse_qs, urlparse
 
 
-@frappe.whitelist(allow_guest=True)
-def login(provider):
+def build_saml_login_redirect(
+	provider: str, redirect_to: str = "", is_passive: bool = False
+) -> str:
 	saml_key = frappe.get_doc("SAML Login Key", provider)
 	saml_settings = saml_key.get_settings(
 		frappe.utils.get_url(f"/api/method/saml.saml.acs?provider={provider}")
 	)
 	client = OneLogin_Saml2_Auth(get_request_data(provider), saml_settings)
+	return client.login(return_to=redirect_to, is_passive=is_passive)
+
+
+@frappe.whitelist(allow_guest=True)
+def login(provider):
 	redirect_location = frappe.local.request.args.get("redirect-to", "")
-	redirect_url = client.login(return_to=redirect_location)
+	passive = cint(frappe.local.request.args.get("passive", 0))
+	redirect_url = build_saml_login_redirect(
+		provider, redirect_to=redirect_location, is_passive=bool(passive)
+	)
 	frappe.local.response["type"] = "redirect"
 	frappe.local.response["location"] = redirect_url
 
@@ -49,9 +59,123 @@ def get_request_data(provider):
 	return request_data
 
 
+def sanitize_redirect_path(path: str | None) -> str:
+	"""Ensure redirect path is a safe relative URL, not an open redirect."""
+	if not path:
+		return ""
+	path = path.strip()
+	if path.startswith("//") or "://" in path:
+		return ""
+	if not path.startswith("/"):
+		return ""
+	return path
+
+
+def saml_response_has_authenticated_assertion(saml_response: str | None) -> bool:
+	if not saml_response:
+		return False
+	try:
+		root = ET.fromstring(base64.b64decode(saml_response))
+	except (ValueError, TypeError, ET.ParseError):
+		return False
+
+	status_codes = [elem.get("Value", "") for elem in root.iter() if elem.tag.endswith("StatusCode")]
+	if status_codes and not any("status:success" in value.lower() for value in status_codes):
+		return False
+
+	for elem in root.iter():
+		if not elem.tag.endswith("Assertion"):
+			continue
+		for child in elem.iter():
+			if child.tag.endswith("NameID") and (child.text or "").strip():
+				return True
+
+	return False
+
+
+def is_passive_saml_status_response(saml_response: str | None) -> bool:
+	if not saml_response:
+		return False
+	try:
+		root = ET.fromstring(base64.b64decode(saml_response))
+		text = ET.tostring(root, encoding="unicode").lower()
+	except (ValueError, TypeError, ET.ParseError):
+		return False
+	return "authnfailed" in text or "nopassive" in text
+
+
+def redirect_to_interactive_saml_login(provider: str, post_data: dict):
+	redirect_to = sanitize_redirect_path(post_data.get("RelayState")) or "/app"
+	redirect_url = build_saml_login_redirect(provider, redirect_to=redirect_to, is_passive=False)
+	frappe.local.response["type"] = "redirect"
+	frappe.local.response["location"] = redirect_url
+
+
+def should_retry_interactive_saml_login(
+	errors: list | None, error_reason: str | None, post_data: dict
+) -> bool:
+	from saml.saml.auth import is_passive_auth_failure
+
+	if is_passive_auth_failure(errors, error_reason):
+		return True
+
+	saml_response = post_data.get("SAMLResponse")
+	if saml_response_has_authenticated_assertion(saml_response):
+		return False
+	return is_passive_saml_status_response(saml_response)
+
+
+def is_signature_validation_error(error_reason: str | None) -> bool:
+	if not error_reason:
+		return False
+	lower_reason = error_reason.lower()
+	return "signature" in lower_reason and (
+		"invalid" in lower_reason or "failed" in lower_reason or "reject" in lower_reason
+	)
+
+
+def build_saml_auth_client(saml_key, provider: str, post_data: dict):
+	request_data = get_request_data(provider)
+	request_data["post_data"] = post_data
+	if not request_data.get("query_string"):
+		request_data["query_string"] = f"provider={provider}"
+
+	acs_url = frappe.utils.get_url(f"/api/method/saml.saml.acs?provider={provider}")
+	return OneLogin_Saml2_Auth(request_data, saml_key.get_settings(acs_url))
+
+
+def sync_idp_certificate_for_acs(saml_key):
+	saml_key.sync_idp_metadata_from_url()
+	frappe.db.set_value(
+		"SAML Login Key",
+		saml_key.name,
+		"idp_x509cert",
+		saml_key.idp_x509cert,
+		update_modified=False,
+	)
+
+
+def process_saml_acs_response(saml_key, provider: str, post_data: dict):
+	client = build_saml_auth_client(saml_key, provider, post_data)
+	client.process_response()
+	errors = client.get_errors()
+	error_reason = client.get_last_error_reason()
+
+	if errors and is_signature_validation_error(error_reason):
+		try:
+			sync_idp_certificate_for_acs(saml_key)
+			client = build_saml_auth_client(saml_key, provider, post_data)
+			client.process_response()
+			errors = client.get_errors()
+			error_reason = client.get_last_error_reason()
+		except Exception:
+			frappe.log_error(frappe.get_traceback(), _("SAML IdP certificate sync failed during ACS"))
+
+	return client, errors, error_reason
+
+
 @frappe.whitelist(allow_guest=True)
 def acs():
-	https_on = not frappe.conf.get("developer_mode", False)
 	try:
 		post_data = dict(frappe.request.form.copy())
 		query_data = dict(frappe.request.args.copy())
@@ -90,60 +214,28 @@ def acs():
 			)
 			return
 
-		host = frappe.conf.get("host_name", frappe.local.request.host)
-		if host.startswith("https://") or host.startswith("http://"):
-			host = host.split("://", 1)[1]
-
-		if not frappe.conf.get("developer_mode", False):
-			host = host.split(":")[0]
-
-		request_data = {
-			"http_host": host,
-			"script_name": frappe.local.request.environ.get("PATH_INFO"),
-			"post_data": post_data,
-			"https": "on" if https_on else "off",
-		}
-
-		if frappe.conf.get("developer_mode", False):
-			request_data["server_port"] = frappe.local.request.environ.get("SERVER_PORT")
-
 		saml_key = frappe.get_doc("SAML Login Key", provider)
+		client, errors, error_reason = process_saml_acs_response(saml_key, provider, post_data)
 
-		if https_on:
-			acs_url = f"https://{host}/api/method/saml.saml.acs"
-		else:
-			acs_url = f"http://{host}/api/method/saml.saml.acs"
-
-		saml_settings = OneLogin_Saml2_Settings(
-			{
-				"sp": {
-					"entityId": saml_key.sp_entity_id,
-					"assertionConsumerService": {
-						"url": acs_url,
-						"binding": "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST",
-					},
-					"signatureAlgorithm": "RSA_SHA256",
-				},
-				"idp": {
-					"entityId": saml_key.idp_entity_id,
-					"singleSignOnService": {
-						"url": saml_key.idp_sso_url,
-						"binding": "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect",
-					},
-					"x509cert": saml_key.idp_x509cert,
-				},
-			}
+		from saml.saml.auth import (
+			is_login_relay_state,
+			redirect_to_login_after_passive_failure,
 		)
 
-		client = OneLogin_Saml2_Auth(request_data, saml_settings)
-		client.process_response()
+		if is_login_relay_state(post_data.get("RelayState")) and should_retry_interactive_saml_login(
+			errors, error_reason, post_data
+		):
+			redirect_to_login_after_passive_failure(post_data.get("RelayState"))
+			return
 
-		errors = client.get_errors()
+		if should_retry_interactive_saml_login(errors, error_reason, post_data):
+			redirect_to_interactive_saml_login(provider, post_data)
+			return
+
 		if errors:
-			error_reason = client.get_last_error_reason()
 			frappe.respond_as_web_page(
 				_("SAML Login Failed"),
-				_(f"Invalid SAML response: {error_reason}"),
+				_("Invalid SAML response: {0}").format(error_reason),
 				http_status_code=403,
 			)
 			return
@@ -199,7 +291,7 @@ def acs():
 				remove_encrypted_password("User", user.name, "password")
 
 		if saml_key.apply_saml_roles:
-			roles = attributes.get("Role", [])
+			roles = (attributes or {}).get("Role", [])
 			roles_to_apply = []
 			user.flags.ignore_permissions = True
 
@@ -207,12 +299,11 @@ def acs():
 				for role_mapping in saml_key.roles:
 					if role_mapping.saml_role == role:
 						if role_mapping.role_or_role_profile == "Role Profile":
-							if user.role_profile_name == role_mapping.saml_role == role:
+							if user.role_profile_name == role_mapping.user_role:
 								break
-							elif role_mapping.saml_role == role:
-								user.role_profile_name = role_mapping.user_role
-								user.save(ignore_permissions=True)
-								break
+							user.role_profile_name = role_mapping.user_role
+							user.save(ignore_permissions=True)
+							break
 						else:
 							if user.role_profile_name:
 								user.roles = []
@@ -232,17 +323,27 @@ def acs():
 		# Log the user in
 		frappe.local.login_manager.user = user.name
 		frappe.local.login_manager.post_login()
+		from saml.saml.logout import store_saml_session_data
+
+		store_saml_session_data(client, provider)
 		frappe.db.commit()
-		redirect_to = post_data.get("RelayState")
+		redirect_to = sanitize_redirect_path(post_data.get("RelayState"))
 
 		if not redirect_to:
 			redirect_to = "/me" if user.user_type == "Website User" else "/app"
 		frappe.local.response["type"] = "redirect"
 		frappe.local.response["location"] = frappe.utils.get_url(redirect_to)
 
-	except Exception as e:
+	except Exception:
 		frappe.log_error(frappe.get_traceback(), _("SAML Login Error"))
-		frappe.respond_as_web_page(_("SAML Login Failed"), frappe.get_traceback(), http_status_code=500)
+		if frappe.conf.get("developer_mode"):
+			frappe.respond_as_web_page(_("SAML Login Failed"), frappe.get_traceback(), http_status_code=500)
+		else:
+			frappe.respond_as_web_page(
+				_("SAML Login Failed"),
+				_("An error occurred during SAML authentication. Please contact your administrator."),
+				http_status_code=500,
+			)
 
 
 def determine_provider_from_saml_response(saml_response):

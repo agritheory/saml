@@ -96,6 +96,15 @@ jobs:
       - name: Install App Dependencies
         run: bash ${{ github.workspace }}/.github/helper/install_dependencies.sh
 
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          check-latest: true
+
+      - name: Enable Corepack
+        run: corepack enable
+
       - name: Install Bench Site and Apps
         env:
           DB: ${{ matrix.db }}

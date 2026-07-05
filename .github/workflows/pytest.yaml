@@ -52,21 +52,29 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
-      keycloak:
-        image: quay.io/keycloak/keycloak:24.0.1
-        env:
-          KEYCLOAK_ADMIN: admin
-          KEYCLOAK_ADMIN_PASSWORD: admin
-          KC_HEALTH_ENABLED: true
-        ports:
-          - 8080:8080
-        options: >-
-          --entrypoint /opt/keycloak/bin/kc.sh
-          start-dev
-
     steps:
       - name: Clone
         uses: actions/checkout@v4
+
+      - name: Start Keycloak
+        run: |
+          docker run -d --name keycloak \
+            -p 8080:8080 \
+            -e KEYCLOAK_ADMIN=admin \
+            -e KEYCLOAK_ADMIN_PASSWORD=admin \
+            -e KC_HEALTH_ENABLED=true \
+            quay.io/keycloak/keycloak:24.0.1 \
+            start-dev
+          for attempt in $(seq 1 60); do
+            if curl -sf http://localhost:8080/health/ready >/dev/null; then
+              echo "Keycloak is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Keycloak failed to become ready" >&2
+          docker logs keycloak
+          exit 1
 
       - name: Setup Python
         uses: actions/setup-python@v5

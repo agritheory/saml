@@ -2,6 +2,8 @@
 # For license information, please see license.txt
 
 import json
+import os
+import subprocess
 from pathlib import Path
 
 import frappe
@@ -77,7 +79,7 @@ def create_role_profile():
 	role_profile.name = "Knowledge Base"
 	role_profile.role_profile = "Knowledge Base"
 	for role in [
-		"Blogger",
+		"Desk User",
 		"Knowledge Base Contributor",
 		"Knowledge Base Editor",
 		"Newsletter Manager",
@@ -99,3 +101,51 @@ def create_saml_login_key():
 		else:
 			saml_key = frappe.get_doc(login_key)
 			saml_key.insert()
+
+
+def process_keycloak_realm():
+	"""Write realm-export.json using this site's bench webserver port."""
+	from saml.tests.process_realm import process_realm_export
+
+	process_realm_export()
+
+
+def import_keycloak_realm():
+	"""Import realm-export.json into the local Keycloak instance."""
+	from saml.tests import import_keycloak_realm as keycloak_importer
+
+	tests_dir = Path(frappe.get_app_path("saml")) / "tests"
+	realm_path = tests_dir / "realm-export.json"
+	keycloak_importer.wait_for_keycloak(keycloak_importer.DEFAULT_KEYCLOAK_URL)
+	keycloak_importer.import_realm(
+		keycloak_importer.DEFAULT_KEYCLOAK_URL,
+		realm_path,
+		keycloak_importer.DEFAULT_ADMIN_USER,
+		keycloak_importer.DEFAULT_ADMIN_PASSWORD,
+	)
+	print(f"Imported Keycloak realm from {realm_path}")
+
+
+def run_keycloak_build():
+	"""Rebuild and start the local Keycloak docker-compose stack."""
+	tests_dir = Path(frappe.get_app_path("saml")) / "tests"
+	keycloak_sh = tests_dir / "keycloak.sh"
+	subprocess.run([str(keycloak_sh), "--build"], cwd=tests_dir, check=True)
+
+
+def sync_keycloak_realm():
+	"""Process, rebuild Keycloak, and import the test realm for this bench site."""
+	from saml.tests import import_keycloak_realm as keycloak_importer
+	from saml.tests.keycloak_helpers import commit_db_changes, configure_site_for_keycloak
+	from saml.tests.keycloak_helpers import enable_test_developer_mode, sync_keycloak_idp_certificate
+
+	process_keycloak_realm()
+	if not os.environ.get("CI"):
+		run_keycloak_build()
+	keycloak_importer.wait_for_keycloak(keycloak_importer.DEFAULT_KEYCLOAK_URL)
+	import_keycloak_realm()
+	configure_site_for_keycloak()
+	enable_test_developer_mode()
+	sync_keycloak_idp_certificate()
+	commit_db_changes()
+	print("Keycloak test realm synced and IdP certificate updated")

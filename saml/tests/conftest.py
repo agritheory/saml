@@ -10,7 +10,7 @@ import pytest
 from frappe.utils import get_bench_path
 
 
-def _get_logger(*args, **kwargs):
+def stream_logger(*args, **kwargs):
 	from frappe.utils.logger import get_logger
 
 	return get_logger(
@@ -24,15 +24,9 @@ def _get_logger(*args, **kwargs):
 	)
 
 
-@pytest.fixture(scope="module")
-def monkeymodule():
-	with pytest.MonkeyPatch.context() as mp:
-		yield mp
-
-
 @pytest.fixture(scope="session", autouse=True)
 def db_instance():
-	frappe.logger = _get_logger
+	frappe.logger = stream_logger
 
 	currentsite = "test_site"
 	sites = Path(get_bench_path()) / "sites"
@@ -41,6 +35,9 @@ def db_instance():
 
 	frappe.init(site=currentsite, sites_path=sites)
 	frappe.connect()
+	from saml.tests.keycloak_helpers import enable_test_developer_mode
+
+	enable_test_developer_mode()
 	frappe.db.commit = MagicMock()
 	yield frappe.db
 

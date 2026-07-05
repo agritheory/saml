@@ -115,6 +115,18 @@ def sync_keycloak_idp_certificate(provider=None):
 		saml_key.idp_metadata_url = f"{saml_key.idp_entity_id.rstrip('/')}/protocol/saml/descriptor"
 	saml_key.sync_idp_certificate_from_descriptor()
 	saml_key.save(ignore_permissions=True)
+	commit_db_changes()
+
+
+def ensure_keycloak_test_environment(provider=None):
+	"""Prepare site config and IdP metadata needed for Keycloak integration tests."""
+	from saml.tests import import_keycloak_realm as keycloak_importer
+
+	wait_for_keycloak()
+	keycloak_importer.wait_for_realm_saml(keycloak_importer.DEFAULT_KEYCLOAK_URL)
+	configure_site_for_keycloak()
+	enable_test_developer_mode()
+	sync_keycloak_idp_certificate(provider)
 
 
 def commit_db_changes():
@@ -146,7 +158,18 @@ def wait_for_keycloak(timeout=120):
 
 def configure_site_for_keycloak():
 	port = get_webserver_port()
-	frappe.conf.host_name = f"http://localhost:{port}"
+	host_name = f"http://localhost:{port}"
+	frappe.conf.host_name = host_name
+	from frappe.installer import update_site_config
+
+	update_site_config("host_name", host_name, validate=False)
+
+
+def enable_test_developer_mode():
+	frappe.conf.developer_mode = 1
+	from frappe.installer import update_site_config
+
+	update_site_config("developer_mode", 1, validate=False)
 
 
 def build_saml_auth(provider=None):
@@ -258,6 +281,7 @@ def has_authenticated_saml_assertion(saml_response: str) -> bool:
 
 def complete_keycloak_login(username, password):
 	configure_site_for_keycloak()
+	frappe.conf.developer_mode = 1
 	auth, acs_url = build_saml_auth()
 	redirect_url = auth.login(return_to="/app")
 	session = requests.Session()
@@ -313,9 +337,20 @@ def complete_keycloak_login(username, password):
 USE_TEST_PROVIDER = object()
 
 
-def setup_acs_request(saml_response, relay_state="", provider=USE_TEST_PROVIDER):
+def setup_acs_request(
+	saml_response,
+	relay_state="",
+	provider=USE_TEST_PROVIDER,
+	query_provider=USE_TEST_PROVIDER,
+):
 	if provider is USE_TEST_PROVIDER:
-		provider = get_test_saml_provider()
+		resolved_provider = get_test_saml_provider()
+	else:
+		resolved_provider = provider
+
+	if query_provider is USE_TEST_PROVIDER:
+		query_provider = resolved_provider
+
 	from urllib.parse import urlencode
 
 	from frappe.utils import set_request
@@ -323,7 +358,7 @@ def setup_acs_request(saml_response, relay_state="", provider=USE_TEST_PROVIDER)
 
 	configure_site_for_keycloak()
 	http_host, server_port, https_on = get_bench_request_host()
-	query_string = f"provider={provider}" if provider else ""
+	query_string = f"provider={query_provider}" if query_provider else ""
 	set_request(
 		method="POST",
 		path="/api/method/saml.saml.acs",
@@ -335,11 +370,11 @@ def setup_acs_request(saml_response, relay_state="", provider=USE_TEST_PROVIDER)
 	if frappe.conf.get("developer_mode"):
 		frappe.local.request.environ["SERVER_PORT"] = str(server_port)
 	form_dict = frappe._dict(SAMLResponse=saml_response, RelayState=relay_state)
-	if provider:
-		form_dict.provider = provider
+	if resolved_provider:
+		form_dict.provider = resolved_provider
 	frappe.local.form_dict = form_dict
-	if provider:
-		frappe.local.request.args = ImmutableMultiDict([("provider", provider)])
+	if query_provider:
+		frappe.local.request.args = ImmutableMultiDict([("provider", query_provider)])
 	else:
 		frappe.local.request.args = ImmutableMultiDict()
 	frappe.request = frappe.local.request
@@ -355,7 +390,7 @@ def invoke_acs(saml_response, relay_state="", provider=USE_TEST_PROVIDER):
 	setup_acs_request(saml_response, relay_state, provider)
 	frappe.local.cookie_manager = CookieManager()
 	frappe.local.login_manager = LoginManager()
-	frappe.response = frappe._dict()
+	frappe.local.response = frappe._dict()
 	frappe.set_user("Guest")
 	acs()
 
@@ -389,6 +424,7 @@ def invoke_login(provider=USE_TEST_PROVIDER, redirect_to="", passive=False):
 
 def fetch_keycloak_passive_failure_saml(redirect_to="/app/sales"):
 	configure_site_for_keycloak()
+	frappe.conf.developer_mode = 1
 	session = requests.Session()
 	auth, acs_url = build_saml_auth()
 	redirect_url = auth.login(return_to=redirect_to, is_passive=True)
@@ -431,6 +467,7 @@ def fetch_keycloak_passive_failure_saml(redirect_to="/app/sales"):
 
 def establish_keycloak_idp_session(username, password):
 	configure_site_for_keycloak()
+	frappe.conf.developer_mode = 1
 	session = requests.Session()
 	auth, _ = build_saml_auth()
 	redirect_url = auth.login(return_to="/app")
@@ -648,7 +685,7 @@ def complete_http_auto_saml_home_login(username, password, base_url=None):
 				allow_redirects=True,
 				timeout=30,
 			)
-			if response.cookies.get("user_id") not in (None, "Guest"):
+			if session.cookies.get("user_id") not in (None, "Guest"):
 				return session, response
 			continue
 
@@ -669,7 +706,7 @@ def complete_http_auto_saml_home_login(username, password, base_url=None):
 				response = session.get(saml_login_url, allow_redirects=True, timeout=30)
 				continue
 
-		if response.cookies.get("user_id") not in (None, "Guest"):
+		if session.cookies.get("user_id") not in (None, "Guest"):
 			return session, response
 
 		raise RuntimeError(

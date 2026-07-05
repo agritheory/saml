@@ -7,10 +7,6 @@ on:
       - version-16
   pull_request:
 
-concurrency:
-  group: version-15-saml-${{ github.event.number }}
-  cancel-in-progress: true
-
 permissions:
   contents: write
   checks: write
@@ -22,18 +18,51 @@ env:
 
 jobs:
   tests:
-    name: Server
+    name: Server (${{ matrix.db }})
     runs-on: ubuntu-latest
+
+    concurrency:
+      group: version-16-saml-${{ github.event.number || github.run_id }}-${{ matrix.db }}
+      cancel-in-progress: true
+
+    strategy:
+      fail-fast: false
+      matrix:
+        db: [mariadb, postgres]
 
     services:
       mariadb:
         image: mariadb:10.6
         env:
           MYSQL_ALLOW_EMPTY_PASSWORD: YES
-          MYSQL_ROOT_PASSWORD: 'admin'
+          MYSQL_ROOT_PASSWORD: admin
         ports:
           - 3306:3306
         options: --health-cmd="mysqladmin ping" --health-interval=5s --health-timeout=2s --health-retries=3
+
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: admin
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      keycloak:
+        image: quay.io/keycloak/keycloak:24.0.1
+        env:
+          KEYCLOAK_ADMIN: admin
+          KEYCLOAK_ADMIN_PASSWORD: admin
+          KC_HEALTH_ENABLED: true
+        ports:
+          - 8080:8080
+        options: >-
+          --entrypoint /opt/keycloak/bin/kc.sh
+          start-dev
 
     steps:
       - name: Clone
@@ -61,33 +90,21 @@ jobs:
 
       - name: Install Bench Site and Apps
         env:
-          MYSQL_HOST: 'localhost'
-          MYSQL_PWD: 'admin'
+          DB: ${{ matrix.db }}
+          MYSQL_HOST: localhost
+          MYSQL_PWD: admin
+          PGPASSWORD: admin
         run: bash ${{ github.workspace }}/.github/helper/install.sh
+
+      - name: Sync Keycloak test realm
+        working-directory: /home/runner/frappe-bench
+        run: bench --site test_site execute 'saml.tests.setup.sync_keycloak_realm'
 
       - name: Run Frappe Tests
         working-directory: /home/runner/frappe-bench
         run: |
           bench --site test_site set-config allow_tests true
           bench --site test_site run-tests --app saml
-
-      - name: Start Keycloak
-        working-directory: /home/runner/frappe-bench/apps/saml/saml/tests
-        run: |
-          export BENCH_PORT=8000
-          ./keycloak.sh -d
-
-      - name: Wait for Keycloak
-        run: |
-          for attempt in $(seq 1 60); do
-            if curl -sf http://localhost:8080/health/ready >/dev/null; then
-              echo "Keycloak ready"
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "Keycloak did not become ready"
-          exit 1
 
       - name: Run Pytest Tests
         working-directory: /home/runner/frappe-bench
@@ -111,8 +128,10 @@ jobs:
           PY
         env:
           TYPE: server
+          DB: ${{ matrix.db }}
 
       - name: Pytest coverage comment
+        if: matrix.db == 'mariadb'
         uses: MishaKav/pytest-coverage-comment@v1
         with:
           pytest-coverage-path: /home/runner/frappe-bench/apps/saml/pytest-coverage.txt

@@ -8,7 +8,7 @@
 		"roles": [
 			{
 				"idx": 1,
-				"role": "Blogger",
+				"role": "Desk User",
 				"parent": "Knowledge Base",
 				"parentfield": "roles",
 				"parenttype": "Role Profile",

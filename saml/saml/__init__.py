@@ -59,6 +59,20 @@ def get_request_data(provider):
 	return request_data
 
 
+def user_has_role_profile(user, profile_name: str) -> bool:
+	if user.role_profile_name == profile_name:
+		return True
+	return any(row.role_profile == profile_name for row in user.get("role_profiles") or [])
+
+
+def clear_user_role_profiles(user):
+	if user.role_profile_name or user.get("role_profiles"):
+		user.role_profiles = []
+		user.roles = []
+		user.role_profile_name = ""
+		user.save(ignore_permissions=True)
+
+
 def sanitize_redirect_path(path: str | None) -> str:
 	"""Ensure redirect path is a safe relative URL, not an open redirect."""
 	if not path:
@@ -299,20 +313,19 @@ def acs():
 				for role_mapping in saml_key.roles:
 					if role_mapping.saml_role == role:
 						if role_mapping.role_or_role_profile == "Role Profile":
-							if user.role_profile_name == role_mapping.user_role:
+							if user_has_role_profile(user, role_mapping.user_role):
 								break
-							user.role_profile_name = role_mapping.user_role
+							user.role_profiles = []
+							user.append("role_profiles", {"role_profile": role_mapping.user_role})
 							user.save(ignore_permissions=True)
 							break
 						else:
-							if user.role_profile_name:
-								user.roles = []
-								user.role_profile_name = ""
-								user.save(ignore_permissions=True)
+							if user.role_profile_name or user.get("role_profiles"):
+								clear_user_role_profiles(user)
 							roles_to_apply.append(role_mapping.user_role)
 
 			if roles_to_apply:
-				user.add_roles(roles_to_apply)
+				user.add_roles(*roles_to_apply)
 
 			if saml_key.match_saml_roles:
 				for has_role in reversed(user.roles):

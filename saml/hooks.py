@@ -64,8 +64,17 @@ web_include_js = ["saml.bundle.js"]
 # Installation
 # ------------
 
-# before_install = "saml.install.before_install"
-# after_install = "saml.install.after_install"
+after_install = "saml.install.after_install"
+
+# Documented for operators; install hooks read DEBIAN_PACKAGES in install.py.
+debian_packages = [
+	"libxml2-dev",
+	"libxslt-dev",
+	"libxmlsec1-dev",
+	"libxmlsec1-openssl",
+	"pkg-config",
+	"python3-lxml",
+]
 
 # Uninstallation
 # ------------

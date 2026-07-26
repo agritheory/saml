@@ -28,10 +28,18 @@ from saml.saml.auth import (
 	consume_skip_passive_saml_token,
 	create_skip_passive_saml_token,
 	is_auto_saml_excluded_path,
+	is_login_relay_state,
 	is_passive_auth_failure,
 	path_matches_auto_saml_rule,
 	should_auto_saml_login,
 	website_path_resolver,
+)
+from saml.saml.redirects import (
+	get_pending_saml_redirect_request_id,
+	normalize_saml_redirect_to,
+	prepare_saml_relay_state,
+	resolve_saml_redirect,
+	store_pending_saml_redirect,
 )
 from saml.saml.doctype.saml_login_key.saml_login_key import (
 	SAMLLoginKey,
@@ -70,6 +78,103 @@ def test_sanitize_redirect_path_allows_relative_paths():
 def test_sanitize_redirect_path_handles_empty():
 	assert sanitize_redirect_path(None) == ""
 	assert sanitize_redirect_path("") == ""
+
+
+@pytest.mark.order(3)
+def test_normalize_saml_redirect_to_converts_same_host_absolute_url():
+	from frappe.utils import set_request
+
+	original_host_name = frappe.conf.get("host_name")
+	frappe.conf.host_name = "http://erp.ambrosiapieco.example"
+	try:
+		set_request(
+			method="GET",
+			path="/login",
+			headers={"Host": "erp.ambrosiapieco.example"},
+		)
+		assert normalize_saml_redirect_to("http://erp.ambrosiapieco.example/app/sales") == "/app/sales"
+		assert (
+			normalize_saml_redirect_to("http://erp.ambrosiapieco.example/app/user?tab=1")
+			== "/app/user?tab=1"
+		)
+	finally:
+		if original_host_name is not None:
+			frappe.conf.host_name = original_host_name
+		elif hasattr(frappe.conf, "host_name"):
+			del frappe.conf.host_name
+
+
+@pytest.mark.order(3)
+def test_normalize_saml_redirect_to_rejects_external_host():
+	from frappe.utils import set_request
+
+	set_request(method="GET", path="/login", headers={"Host": "erp.ambrosiapieco.example"})
+	assert normalize_saml_redirect_to("https://evil.com/app") == ""
+
+
+@pytest.mark.order(3)
+def test_prepare_saml_relay_state_uses_path_for_short_redirects():
+	assert prepare_saml_relay_state("/app/sales") == "/app/sales"
+
+
+@pytest.mark.order(3)
+def test_prepare_saml_relay_state_uses_token_for_long_redirects():
+	long_path = "/app/" + ("x" * 80)
+	token = prepare_saml_relay_state(long_path)
+	assert token != long_path
+	assert resolve_saml_redirect(token, None) == long_path
+
+
+@pytest.mark.order(3)
+def test_resolve_saml_redirect_uses_request_id_cache():
+	store_pending_saml_redirect("req-123", "/app/custom")
+	assert resolve_saml_redirect("", "req-123") == "/app/custom"
+	assert resolve_saml_redirect("", "req-123") == ""
+
+
+@pytest.mark.order(3)
+def test_resolve_saml_redirect_returns_empty_without_relay_state_or_cache():
+	assert resolve_saml_redirect("", None) == ""
+	assert resolve_saml_redirect(None, None) == ""
+
+
+@pytest.mark.order(3)
+def test_resolve_saml_redirect_normalizes_absolute_relay_state():
+	from frappe.utils import set_request
+
+	original_host_name = frappe.conf.get("host_name")
+	frappe.conf.host_name = "http://erp.ambrosiapieco.example"
+	try:
+		set_request(
+			method="GET",
+			path="/api/method/saml.saml.acs",
+			headers={"Host": "erp.ambrosiapieco.example"},
+		)
+		assert resolve_saml_redirect("http://erp.ambrosiapieco.example/app/sales", None) == "/app/sales"
+	finally:
+		if original_host_name is not None:
+			frappe.conf.host_name = original_host_name
+		elif hasattr(frappe.conf, "host_name"):
+			del frappe.conf.host_name
+
+
+@pytest.mark.order(3)
+def test_get_pending_saml_redirect_request_id_prefers_in_response_to():
+	class FakeSamlClient:
+		def get_last_response_in_response_to(self):
+			return "authn-req-warehouse-sales"
+
+		def get_last_request_id(self):
+			return None
+
+	assert get_pending_saml_redirect_request_id(FakeSamlClient()) == "authn-req-warehouse-sales"
+
+
+@pytest.mark.order(3)
+def test_is_login_relay_state_resolves_token_for_login_path():
+	long_login_path = "/login?" + ("redirect-to=%2Fapp&" * 20)
+	token = prepare_saml_relay_state(long_login_path)
+	assert is_login_relay_state(token, None) is True
 
 
 @pytest.mark.order(4)
@@ -1431,3 +1536,33 @@ def test_slo_sanitizes_relay_state_open_redirect():
 
 	assert frappe.local.response.get("type") == "redirect"
 	assert frappe.local.response.get("location") == frappe.utils.get_url("/logout")
+
+
+@pytest.mark.order(92)
+def test_login_uses_token_relay_state_for_long_redirects(keycloak_session):
+	long_path = "/app/" + ("sales-" * 20)
+	response = keycloak.invoke_login(get_test_saml_provider(), redirect_to=long_path)
+	relay_state = parse_qs(urlparse(response["location"]).query).get("RelayState", [None])[0]
+	assert relay_state != long_path
+	assert resolve_saml_redirect(relay_state, None) == normalize_saml_redirect_to(long_path)
+
+
+@pytest.mark.order(93)
+def test_acs_resolves_same_host_absolute_relay_state(keycloak_session):
+	saml_response, relay_state, acs_url = keycloak.complete_keycloak_login(
+		"warehouse", "apc-warehouse"
+	)
+	site_url = frappe.utils.get_url("/app/sales")
+	keycloak.invoke_acs(saml_response, site_url)
+	assert frappe.local.response.get("location") == site_url
+
+
+@pytest.mark.order(94)
+def test_acs_resolves_redirect_from_request_id_when_relay_state_missing(keycloak_session):
+	redirect_to = "/app/sales"
+	login_response = keycloak.invoke_login(get_test_saml_provider(), redirect_to=redirect_to)
+	saml_response, relay_state = keycloak.complete_keycloak_login_from_redirect(
+		login_response, "warehouse", "apc-warehouse"
+	)
+	keycloak.invoke_acs(saml_response, "")
+	assert frappe.local.response.get("location") == frappe.utils.get_url(redirect_to)

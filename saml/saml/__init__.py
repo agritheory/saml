@@ -11,6 +11,15 @@ from frappe.utils.password import remove_encrypted_password
 from onelogin.saml2.auth import OneLogin_Saml2_Auth
 from urllib.parse import parse_qs, urlparse
 
+from saml.saml.redirects import (
+	get_pending_saml_redirect_request_id,
+	normalize_saml_redirect_to,
+	prepare_saml_relay_state,
+	resolve_saml_redirect,
+	sanitize_redirect_path,
+	store_pending_saml_redirect,
+)
+
 
 def build_saml_login_redirect(
 	provider: str, redirect_to: str = "", is_passive: bool = False
@@ -20,12 +29,16 @@ def build_saml_login_redirect(
 		frappe.utils.get_url(f"/api/method/saml.saml.acs?provider={provider}")
 	)
 	client = OneLogin_Saml2_Auth(get_request_data(provider), saml_settings)
-	return client.login(return_to=redirect_to, is_passive=is_passive)
+	redirect_to = normalize_saml_redirect_to(redirect_to)
+	relay_state = prepare_saml_relay_state(redirect_to)
+	redirect_url = client.login(return_to=relay_state, is_passive=is_passive)
+	store_pending_saml_redirect(client.get_last_request_id(), redirect_to)
+	return redirect_url
 
 
 @frappe.whitelist(allow_guest=True)
 def login(provider):
-	redirect_location = frappe.local.request.args.get("redirect-to", "")
+	redirect_location = normalize_saml_redirect_to(frappe.local.request.args.get("redirect-to", ""))
 	passive = cint(frappe.local.request.args.get("passive", 0))
 	redirect_url = build_saml_login_redirect(
 		provider, redirect_to=redirect_location, is_passive=bool(passive)
@@ -73,18 +86,6 @@ def clear_user_role_profiles(user):
 		user.save(ignore_permissions=True)
 
 
-def sanitize_redirect_path(path: str | None) -> str:
-	"""Ensure redirect path is a safe relative URL, not an open redirect."""
-	if not path:
-		return ""
-	path = path.strip()
-	if path.startswith("//") or "://" in path:
-		return ""
-	if not path.startswith("/"):
-		return ""
-	return path
-
-
 def saml_response_has_authenticated_assertion(saml_response: str | None) -> bool:
 	if not saml_response:
 		return False
@@ -118,8 +119,10 @@ def is_passive_saml_status_response(saml_response: str | None) -> bool:
 	return "authnfailed" in text or "nopassive" in text
 
 
-def redirect_to_interactive_saml_login(provider: str, post_data: dict):
-	redirect_to = sanitize_redirect_path(post_data.get("RelayState")) or "/app"
+def redirect_to_interactive_saml_login(
+	provider: str, post_data: dict, request_id: str | None = None
+):
+	redirect_to = resolve_saml_redirect(post_data.get("RelayState"), request_id) or "/app"
 	redirect_url = build_saml_login_redirect(provider, redirect_to=redirect_to, is_passive=False)
 	frappe.local.response["type"] = "redirect"
 	frappe.local.response["location"] = redirect_url
@@ -230,20 +233,21 @@ def acs():
 
 		saml_key = frappe.get_doc("SAML Login Key", provider)
 		client, errors, error_reason = process_saml_acs_response(saml_key, provider, post_data)
+		request_id = get_pending_saml_redirect_request_id(client)
 
 		from saml.saml.auth import (
 			is_login_relay_state,
 			redirect_to_login_after_passive_failure,
 		)
 
-		if is_login_relay_state(post_data.get("RelayState")) and should_retry_interactive_saml_login(
-			errors, error_reason, post_data
-		):
-			redirect_to_login_after_passive_failure(post_data.get("RelayState"))
+		if is_login_relay_state(
+			post_data.get("RelayState"), request_id
+		) and should_retry_interactive_saml_login(errors, error_reason, post_data):
+			redirect_to_login_after_passive_failure(post_data.get("RelayState"), request_id)
 			return
 
 		if should_retry_interactive_saml_login(errors, error_reason, post_data):
-			redirect_to_interactive_saml_login(provider, post_data)
+			redirect_to_interactive_saml_login(provider, post_data, request_id)
 			return
 
 		if errors:
@@ -340,12 +344,13 @@ def acs():
 
 		store_saml_session_data(client, provider)
 		frappe.db.commit()
-		redirect_to = sanitize_redirect_path(post_data.get("RelayState"))
+		redirect_to = resolve_saml_redirect(post_data.get("RelayState"), request_id)
+		from frappe.utils.oauth import redirect_post_login
 
-		if not redirect_to:
-			redirect_to = "/me" if user.user_type == "Website User" else "/app"
-		frappe.local.response["type"] = "redirect"
-		frappe.local.response["location"] = frappe.utils.get_url(redirect_to)
+		redirect_post_login(
+			desk_user=user.user_type != "Website User",
+			redirect_to=frappe.utils.get_url(redirect_to) if redirect_to else None,
+		)
 
 	except Exception:
 		frappe.log_error(frappe.get_traceback(), _("SAML Login Error"))

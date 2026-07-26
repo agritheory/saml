@@ -188,19 +188,19 @@ def path_matches_auto_saml_rule(path: str, rule: str) -> bool:
 
 
 def get_auto_saml_redirect_to(request) -> str:
-	from saml.saml import sanitize_redirect_path
+	from saml.saml.redirects import normalize_saml_redirect_to
 
 	path = request.path or ""
 	if normalize_request_path(path) == "/login":
 		redirect_to = request.args.get("redirect-to")
 		if redirect_to:
-			safe = sanitize_redirect_path(redirect_to)
+			safe = normalize_saml_redirect_to(redirect_to)
 			if safe:
 				return safe
 		return path
 
 	query_string = decode_request_query_string(request)
-	return path_with_query_string(path, query_string)
+	return normalize_saml_redirect_to(path_with_query_string(path, query_string))
 
 
 def redirect_to_login_page(request):
@@ -220,10 +220,12 @@ def build_login_page_path(request=None) -> str:
 	return path_with_query_string(login_path, query_string)
 
 
-def redirect_to_login_after_passive_failure(relay_state: str | None):
-	from saml.saml import sanitize_redirect_path
+def redirect_to_login_after_passive_failure(
+	relay_state: str | None, request_id: str | None = None
+):
+	from saml.saml.redirects import resolve_saml_redirect
 
-	login_path = sanitize_redirect_path(relay_state) or "/login"
+	login_path = resolve_saml_redirect(relay_state, request_id) or "/login"
 	login_path = append_skip_passive_saml_to_login_path(login_path)
 	frappe.local.response["type"] = "redirect"
 	frappe.local.response["location"] = login_path
@@ -244,11 +246,11 @@ def append_skip_passive_saml_to_login_path(login_path: str) -> str:
 	return urlunparse(parsed._replace(query=urlencode(params, doseq=True)))
 
 
-def is_login_relay_state(relay_state: str | None) -> bool:
-	from saml.saml import sanitize_redirect_path
+def is_login_relay_state(relay_state: str | None, request_id: str | None = None) -> bool:
+	from saml.saml.redirects import resolve_saml_redirect
 	from urllib.parse import urlparse
 
-	path = sanitize_redirect_path(relay_state)
+	path = resolve_saml_redirect(relay_state, request_id, consume=False)
 	if not path:
 		return False
 

@@ -4,7 +4,7 @@ For license information, please see license.txt-->
 # SAML Integration
 
 <div class="byline">
-  Tyler Matteson 2026-06-15
+  Tyler Matteson 2026-06-16
 </div>
 
 
@@ -160,3 +160,160 @@ To configure Keycloak as your Identity Provider:
     - X509 Certificate: The value between the `<X509Certificate>` and `</X509Certificate>` tags
 
 After configuring Keycloak, enter the extracted Entity ID, SSO URL, and X509 Certificate into the corresponding fields in your Frappe SAML Login Key.
+
+## SCIM Provisioning
+
+SCIM (System for Cross-domain Identity Management) automates user lifecycle management from your Identity Provider: create users when they are assigned the app, update profile attributes when they change, and deactivate users when they are unassigned or leave the organization.
+
+SCIM complements SAML in this app:
+
+- **SAML** handles authentication (sign-in).
+- **SCIM** handles provisioning (create, update, deactivate users).
+
+Both can use the same IdP (Okta, Microsoft Entra ID, etc.) with separate configuration.
+
+### Enabling SCIM
+
+1. Go to **Desk > SAML > SCIM Settings**
+2. Check **Enabled**
+3. Copy the **Bearer Token** — this is pasted into your IdP's SCIM configuration
+4. Confirm **SCIM Service User** is set (created automatically on app install as `scim-provisioner@system.local`)
+
+The IdP connects to:
+
+| Setting | Value |
+|---------|-------|
+| SCIM base URL | `https://your-site.com/scim/v2` |
+| Authentication | `Authorization: Bearer <token>` |
+| Content type | `application/scim+json` |
+
+### Supported endpoints
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/scim/v2/ServiceProviderConfig` | Capability discovery |
+| GET | `/scim/v2/Schemas` | Supported user schema |
+| GET | `/scim/v2/ResourceTypes` | Supported resource types |
+| GET | `/scim/v2/Users` | List users (supports `filter`, `startIndex`, `count`) |
+| POST | `/scim/v2/Users` | Create user |
+| GET | `/scim/v2/Users/{id}` | Get user |
+| PUT | `/scim/v2/Users/{id}` | Full replace (Okta default update) |
+| PATCH | `/scim/v2/Users/{id}` | Partial update (Entra default update) |
+| DELETE | `/scim/v2/Users/{id}` | Deactivate user (`enabled = 0`) |
+
+`{id}` is the Frappe User name (email address). The IdP receives this as the `id` attribute on create and uses it in all subsequent requests.
+
+### Core attribute schema (fixed)
+
+Core SCIM attributes are mapped in code, not via SCIM Settings. Configure attribute mappings on the **IdP side** (Okta profile mappings, Entra attribute mappings):
+
+| SCIM attribute | Frappe User field | Notes |
+|----------------|-------------------|-------|
+| `userName` | `email` (document name) | Must be a valid email address |
+| `externalId` | `scim_external_id` | IdP's identifier; echoed back separately from `id` |
+| `name.givenName` | `first_name` | |
+| `name.middleName` | `middle_name` | |
+| `name.familyName` | `last_name` | |
+| `active` | `enabled` | `false` deactivates the user |
+| `emails[type eq "work"].value` | `email` | Fallback when it differs from `userName` |
+| `phoneNumbers[type eq "work"].value` | `phone` | |
+| `phoneNumbers[type eq "mobile"].value` | `mobile_no` | |
+| `preferredLanguage` | `language` | Primary BCP 47 subtag only (for example `en-US` → `en`) |
+
+Users provisioned via SCIM are marked **SCIM Managed** and cannot set or reset their Frappe password.
+
+### Identity provider mappings (shared with SAML)
+
+SCIM provisioning uses the **Identity Provider** linked in SCIM Settings — a **SAML Login Key** record. Attribute and role mappings live on that provider, not in SCIM Settings.
+
+Configure mappings once on the SAML Login Key under **Mappings**:
+
+#### Attribute mappings
+
+Map IdP attributes to Frappe User fields for both SAML login and SCIM provisioning.
+
+| Source Attribute | User Field | SCIM Path (optional) |
+|------------------|------------|------------------------|
+| `department` | `location` | `urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:department` |
+
+- **Source Attribute** — SAML assertion attribute name.
+- **User Field** — Frappe User field (including custom fields).
+- **SCIM Path** — full SCIM path when it differs from the source attribute (enterprise extension URNs, nested paths).
+
+Core SCIM attributes (`userName`, `name.*`, `active`, etc.) remain fixed in code and cannot be mapped here.
+
+#### Role mappings
+
+Use the **Role Mappings** child table on the SAML Login Key for both SAML SSO and SCIM:
+
+| SAML Role | Frappe Role |
+|-----------|-------------|
+| `Engineering` | `System Manager` |
+
+- **SAML Role Attribute** — assertion attribute for SSO role lists (default: `Role`).
+- **SCIM Role Source Attribute** — SCIM path where provisioning sends group/role names (for example `customRoles`).
+
+For SCIM, configure your IdP to write group or role names into the SCIM attribute named by **SCIM Role Source Attribute**. If it is empty, SCIM role sync is skipped and only **Default Role** applies on create. SCIM role sync applies only to rows where **Role or Role Profile** is **Role**; **Role Profile** mappings are used for SAML SSO only.
+
+For SAML SSO, enable **Apply SAML Roles** and optionally **Match SAML Roles** as before.
+
+### SCIM Settings reference
+
+| Field | Description |
+|-------|-------------|
+| **Enabled** | Turn SCIM provisioning on or off |
+| **Bearer Token** | Secret token the IdP sends in the Authorization header |
+| **SCIM Service User** | Dedicated user used for audit trail on provisioned changes |
+| **Identity Provider** | SAML Login Key whose mapping tables SCIM uses |
+| **Default User Type** | User type assigned on create (default: System User) |
+| **Default Role** | Role applied on create when no role mapping matches |
+| **Do Not Create New User** | Only update existing users; reject creates for unknown emails |
+
+### IdP configuration examples
+
+#### Okta
+
+1. In your Okta app integration, enable **SCIM provisioning**
+2. Set **SCIM connector base URL** to `https://your-site.com/scim/v2`
+3. Set **Unique identifier field for users** to `userName`
+4. Paste the **Bearer Token** from SCIM Settings
+5. Configure **Attribute mappings** on the Okta side for profile fields
+6. Run **Sync** or assign users to test
+
+Okta typically uses `PUT` for profile updates and `PATCH` with `active: false` for deactivation.
+
+#### Microsoft Entra ID
+
+1. In **Enterprise applications**, select your app → **Provisioning**
+2. Set **Provisioning Mode** to Automatic
+3. Set **Tenant URL** to `https://your-site.com/scim/v2`
+4. Paste the **Secret Token** (Bearer Token from SCIM Settings)
+5. Configure **Attribute mappings** under Provisioning settings
+6. Save and run **Provision on demand** or wait for the sync cycle
+
+Entra typically uses `PATCH` with PatchOp `Operations` arrays for updates.
+
+### Limitations (v1)
+
+- **No `/Groups` resource** — use the custom-attribute role convention above, or open a follow-on ticket if you need Okta Group Push or Entra group provisioning
+- **Filtering** — only `userName eq` and `externalId eq` are supported; other expressions return `400 invalidFilter`
+- **No bulk operations** — `/scim/v2/Bulk` is not supported
+- **No ETag/versioning**
+- **Deactivation only** — DELETE and `active: false` set `enabled = 0`; users are not hard-deleted
+
+### Conformance testing (release gate)
+
+Before treating SCIM as production-ready against a new IdP deployment, CI runs two conformance jobs in parallel after pytest:
+
+1. **Okta SCIM 2.0 SPEC collection** — executed locally via [`saml/tests/run_okta_scim_spec.py`](saml/tests/run_okta_scim_spec.py) (adapted from [oktadev/okta-scim-beta](https://github.com/oktadev/okta-scim-beta)). Microsoft's official Runscope/BlazeMeter UI is not required in CI.
+2. **Entra-style RFC probe** — [`scim-sanity`](https://github.com/thomaselliottbetz/scim-sanity) with `--profile entra --resource User`. Microsoft's web validator at [scimvalidator.microsoft.com](https://scimvalidator.microsoft.com/) has no scriptable OSS runner; this probe is the automated substitute.
+
+Both are orchestrated by [`saml/tests/run_scim_conformance.sh`](saml/tests/run_scim_conformance.sh). Local pytest tests cover protocol behavior without an IdP.
+
+### Keycloak SCIM lab config (manual review)
+
+Keycloak does not ship outbound SCIM in the stock 24.x test image. The test harness generates [`saml/tests/scim-keycloak-config.json`](saml/tests/scim-keycloak-config.json) from [`saml/tests/data/scim_keycloak_config.template.json`](saml/tests/data/scim_keycloak_config.template.json) during `before_test` and when `./keycloak.sh` runs (via `process_realm.py`).
+
+Review that file before enabling outbound SCIM. It targets the [pelotech/keycloak-scim](https://github.com/pelotech/keycloak-scim) User Federation provider (`providerId=scim`) and points at `http://host.docker.internal:<bench-port>/scim/v2` with the test bearer token.
+
+To apply after installing the plugin on Keycloak, see `keycloak_scim_helpers.push_keycloak_scim_config`.

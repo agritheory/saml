@@ -1,0 +1,45 @@
+{
+	"realm": "frappe",
+	"eventsListeners": ["jboss-logging", "scim"],
+	"components": {
+		"org.keycloak.storage.UserStorageProvider": [
+			{
+				"name": "frappe-scim",
+				"providerId": "scim",
+				"config": {
+					"endpoint": ["http://host.docker.internal:8027/scim/v2"],
+					"content-type": ["application/scim+json"],
+					"auth-mode": ["BEARER"],
+					"auth-pass": ["test-scim-bearer-token"],
+					"propagation-user": ["true"],
+					"propagation-group": ["false"],
+					"rollback-strategy": ["never"],
+					"user-extension-mappings": [
+						"email = emails[type eq \"work\"].value",
+						"firstName = name.givenName",
+						"lastName = name.familyName",
+						"active = active ; type=boolean"
+					]
+				}
+			}
+		]
+	},
+	"test_users": [
+		{
+			"username": "warehouse@ambrosiapieco.example",
+			"email": "warehouse@ambrosiapieco.example",
+			"firstName": "Warehouse",
+			"lastName": "Manager",
+			"enabled": true,
+			"realmRoles": ["System Administrator"]
+		},
+		{
+			"username": "scim.provision@ambrosiapieco.example",
+			"email": "scim.provision@ambrosiapieco.example",
+			"firstName": "SCIM",
+			"lastName": "Provision",
+			"enabled": true,
+			"realmRoles": ["default-roles-frappe"]
+		}
+	]
+}

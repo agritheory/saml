@@ -52,6 +52,8 @@ web_include_js = ["saml.bundle.js"]
 # automatically create page for each record of this doctype
 # website_generators = ["Web Page"]
 
+page_renderer = ["saml.saml.scim_renderer.SCIMApiRenderer"]
+
 # Jinja
 # ----------
 
@@ -65,7 +67,7 @@ web_include_js = ["saml.bundle.js"]
 # ------------
 
 # before_install = "saml.install.before_install"
-# after_install = "saml.install.after_install"
+after_install = "saml.install.after_install"
 
 # Uninstallation
 # ------------
@@ -149,7 +151,10 @@ override_whitelisted_methods = {
 
 # Request Events
 # ----------------
-before_request = ["saml.saml.auth.before_request"]
+before_request = [
+	"saml.saml.scim_renderer.handle_scim_methods",
+	"saml.saml.auth.before_request",
+]
 website_path_resolver = ["saml.saml.auth.website_path_resolver"]
 # after_request = ["saml.utils.after_request"]
 
@@ -185,7 +190,7 @@ website_path_resolver = ["saml.saml.auth.website_path_resolver"]
 # Authentication and authorization
 # --------------------------------
 
-# auth_hooks = ["saml.auth.authenticate"]
+auth_hooks = ["saml.saml.scim_renderer.authenticate_scim_token"]
 
 export_python_type_annotations = True
 

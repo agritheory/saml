@@ -14,12 +14,25 @@ def validate_reset_password(user, method=None):
 	3. If there are no enabled SAML Login Keys with password update disallowed
 	"""
 
-	if (
-		user.is_new()
-		or not user.saml_managed
-		or not frappe.get_all(
-			"SAML Login Key", filters={"enable_saml_login": True, "disallow_password_update": True}
-		)
+	if user.is_new():
+		return
+
+	if user.scim_managed:
+		error = {
+			"message": _(
+				"Password reset is not allowed for SCIM-managed users. Please use your identity provider's password management flow."
+			),
+			"title": _("Password Reset Not Allowed"),
+		}
+		if user.get("_User__new_password"):
+			frappe.throw(msg=error["message"], title=error["title"])
+		endpoint = frappe.request and frappe.request.path
+		if endpoint and endpoint.split("/")[-1] in ("frappe.core.doctype.user.user.reset_password",):
+			frappe.throw(msg=error["message"], title=error["title"])
+		return
+
+	if not user.saml_managed or not frappe.get_all(
+		"SAML Login Key", filters={"enable_saml_login": True, "disallow_password_update": True}
 	):
 		return
 

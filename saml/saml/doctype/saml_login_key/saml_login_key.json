@@ -10,8 +10,6 @@
 		"auto_saml_paths",
 		"configuration_section",
 		"provider_name",
-		"apply_saml_roles",
-		"match_saml_roles",
 		"terminate_saml_session_on_logout",
 		"disallow_password_update",
 		"allow_relaxed_saml_validation",
@@ -31,7 +29,12 @@
 		"idp_metadata_sync_cron",
 		"last_idp_metadata_sync",
 		"mappings_section",
-		"roles"
+		"saml_role_attribute",
+		"role_source_attribute",
+		"roles",
+		"attribute_mappings",
+		"apply_saml_roles",
+		"match_saml_roles"
 	],
 	"fields": [
 		{
@@ -161,11 +164,34 @@
 			"label": "Mappings"
 		},
 		{
+			"default": "Role",
+			"depends_on": "eval:doc.enable_saml_login",
+			"description": "SAML assertion attribute carrying IdP group or role names.",
+			"fieldname": "saml_role_attribute",
+			"fieldtype": "Data",
+			"label": "SAML Role Attribute"
+		},
+		{
+			"depends_on": "eval:doc.enable_saml_login",
+			"description": "SCIM path of the custom attribute carrying group or role names for provisioning (for example customRoles).",
+			"fieldname": "role_source_attribute",
+			"fieldtype": "Data",
+			"label": "SCIM Role Source Attribute"
+		},
+		{
 			"allow_bulk_edit": 1,
 			"fieldname": "roles",
 			"fieldtype": "Table",
-			"label": "SAML Role Mappings",
+			"label": "Role Mappings",
 			"options": "SAML Group Mapping"
+		},
+		{
+			"allow_bulk_edit": 1,
+			"depends_on": "eval:doc.enable_saml_login",
+			"fieldname": "attribute_mappings",
+			"fieldtype": "Table",
+			"label": "Attribute Mappings",
+			"options": "SAML Attribute Mapping"
 		},
 		{
 			"default": "0",

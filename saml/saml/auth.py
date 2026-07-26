@@ -13,6 +13,7 @@ AUTO_SAML_EXCLUDED_PREFIXES = (
 	"/assets/",
 	"/files/",
 	"/private/",
+	"/scim/",
 )
 
 AUTO_SAML_EXCLUDED_PATHS = (

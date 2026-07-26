@@ -23,9 +23,11 @@ class SAMLLoginKey(Document):
 
 	if TYPE_CHECKING:
 		from frappe.types import DF
+		from saml.saml.doctype.saml_attribute_mapping.saml_attribute_mapping import SAMLAttributeMapping
 		from saml.saml.doctype.saml_group_mapping.saml_group_mapping import SAMLGroupMapping
 
 		allow_relaxed_saml_validation: DF.Check
+		attribute_mappings: DF.Table[SAMLAttributeMapping]
 		auto_saml_login: DF.Check
 		auto_saml_paths: DF.SmallText | None
 		auto_saml_scope: DF.Literal["All Guest Routes", "Configured Paths", "Desk Only"]
@@ -40,8 +42,10 @@ class SAMLLoginKey(Document):
 		last_idp_metadata_sync: DF.Datetime | None
 		match_saml_roles: DF.Check
 		provider_name: DF.Data
+		role_source_attribute: DF.Data | None
 		roles: DF.Table[SAMLGroupMapping]
 		saml_domains: DF.Text | None
+		saml_role_attribute: DF.Data | None
 		sp_entity_id: DF.Data | None
 		sp_private_key: DF.Password | None
 		sp_x509cert: DF.SmallText | None
@@ -64,6 +68,7 @@ class SAMLLoginKey(Document):
 		self.validate_auto_saml_login_exclusivity()
 		self.validate_auto_saml_paths()
 		self.validate_idp_metadata_sync_cron()
+		self.validate_attribute_mappings()
 
 	def on_update(self):
 		auto_saml_fields = (
@@ -124,6 +129,28 @@ class SAMLLoginKey(Document):
 				_("{0} is not a valid Cron expression.").format(f"<code>{self.idp_metadata_sync_cron}</code>"),
 				title=_("Bad Cron Expression"),
 			)
+
+	def validate_attribute_mappings(self):
+		from saml.saml.scim_constants import CORE_SCIM_PATHS
+
+		user_meta = frappe.get_meta("User")
+		for row in self.attribute_mappings:
+			if not user_meta.has_field(row.user_field):
+				frappe.throw(
+					_("User field does not exist: {0}").format(row.user_field),
+					title=_("Invalid Mapping"),
+				)
+			scim_path = (row.scim_path or row.source_attribute or "").strip()
+			if not scim_path:
+				continue
+			normalized_path = (
+				scim_path.rsplit(":", 1)[-1].lower() if ":" in scim_path else scim_path.lower()
+			)
+			if normalized_path in CORE_SCIM_PATHS or normalized_path.split(".")[0] in CORE_SCIM_PATHS:
+				frappe.throw(
+					_("Attribute mapping cannot target core SCIM attribute: {0}").format(scim_path),
+					title=_("Invalid Mapping"),
+				)
 
 	def sort_by_role_profile(self):
 		roles, role_profiles = [], []

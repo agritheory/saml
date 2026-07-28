@@ -143,9 +143,11 @@ class SAMLLoginKey(Document):
 			scim_path = (row.scim_path or row.source_attribute or "").strip()
 			if not scim_path:
 				continue
-			normalized_path = (
-				scim_path.rsplit(":", 1)[-1].lower() if ":" in scim_path else scim_path.lower()
-			)
+			# Only unprefixed paths address the core schema. An extension URN carries its
+			# own namespace, so an attribute there may legitimately be called "name".
+			if ":" in scim_path:
+				continue
+			normalized_path = scim_path.lower()
 			if normalized_path in CORE_SCIM_PATHS or normalized_path.split(".")[0] in CORE_SCIM_PATHS:
 				frappe.throw(
 					_("Attribute mapping cannot target core SCIM attribute: {0}").format(scim_path),

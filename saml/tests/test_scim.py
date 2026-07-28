@@ -5,7 +5,7 @@ import pytest
 
 import frappe
 
-from saml.saml.scim_constants import SCIM_PATCH_OP_SCHEMA, SCIM_USER_SCHEMA, scim_active_to_enabled
+from saml.saml.scim_constants import SCIM_USER_SCHEMA, scim_active_to_enabled
 from saml.saml.identity_mappings import sync_provider_roles_from_scim
 from saml.saml.scim_paths import deep_get, extract_scim_path
 from saml.saml.scim_provisioning import (

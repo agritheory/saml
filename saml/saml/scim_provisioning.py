@@ -67,7 +67,14 @@ def get_phone_by_type(scim_data: dict, phone_type: str) -> str | None:
 	return None
 
 
-def scim_to_user_data(scim_data: dict, settings: SCIMSettings) -> dict:
+def scim_to_user_data(
+	scim_data: dict, settings: SCIMSettings, existing_user: User | None = None
+) -> dict:
+	"""Translate a SCIM User resource into Frappe User fields.
+
+	Absent attributes map to empty values so PUT acts as a full replace. `first_name`
+	falls back to the existing value, then the userName local-part, as Frappe requires it.
+	"""
 	email = get_email_from_scim(scim_data)
 	if not email:
 		raise SCIMProvisioningError("userName is required", 400, "invalidValue")
@@ -79,25 +86,30 @@ def scim_to_user_data(scim_data: dict, settings: SCIMSettings) -> dict:
 			"invalidValue",
 		)
 
+	given_name = deep_get(scim_data, "name.givenName")
+	if not given_name:
+		given_name = (existing_user.first_name if existing_user else None) or email.split("@", 1)[0]
+
 	user_data: dict[str, Any] = {
 		"email": email,
-		"first_name": deep_get(scim_data, "name.givenName") or email.split("@", 1)[0],
+		"first_name": given_name,
 		"last_name": deep_get(scim_data, "name.familyName") or "",
-		"middle_name": deep_get(scim_data, "name.middleName"),
+		"middle_name": deep_get(scim_data, "name.middleName") or "",
 		"enabled": scim_active_to_enabled(scim_data.get("active", True)),
-		"phone": get_phone_by_type(scim_data, "work"),
-		"mobile_no": get_phone_by_type(scim_data, "mobile"),
-		"language": scim_language_to_frappe(scim_data.get("preferredLanguage")),
+		"phone": get_phone_by_type(scim_data, "work") or "",
+		"mobile_no": get_phone_by_type(scim_data, "mobile") or "",
+		"language": scim_language_to_frappe(scim_data.get("preferredLanguage")) or "",
+		"scim_display_name": scim_data.get("displayName") or "",
+		# NULL rather than "": scim_external_id carries a unique index, and several rows
+		# holding "" would collide where several rows holding NULL do not.
+		"scim_external_id": scim_data.get("externalId") or None,
 	}
-
-	if scim_data.get("externalId"):
-		user_data["scim_external_id"] = scim_data.get("externalId")
 
 	provider = get_identity_provider(settings)
 	if provider:
 		apply_scim_attribute_mappings(user_data, scim_data, provider)
 
-	return {key: value for key, value in user_data.items() if value is not None}
+	return user_data
 
 
 def user_to_scim(user: User) -> dict:
@@ -130,6 +142,11 @@ def user_to_scim(user: User) -> dict:
 		phones.append({"value": user.mobile_no, "type": "mobile"})
 	if user.language:
 		resource["preferredLanguage"] = user.language
+	# displayName is readWrite in RFC 7643 and Entra sends it on every write, so it is
+	# stored verbatim; full_name is only a fallback for users created outside SCIM.
+	display_name = user.get("scim_display_name") or user.full_name
+	if display_name:
+		resource["displayName"] = display_name
 
 	settings = get_scim_settings()
 	provider = get_identity_provider(settings)
@@ -160,7 +177,8 @@ def list_scim_users(
 	start_index: int = 1,
 	count: int | None = None,
 ) -> dict:
-	filters = [["scim_managed", "=", 1]]
+	# RFC 7644 3.6: soft-deleted resources MUST be omitted from future query results.
+	filters = [["scim_managed", "=", 1], ["scim_deleted", "=", 0]]
 	if filter_expression:
 		field_name, value = parse_filter_expression(filter_expression)
 		if field_name.lower() == "username":
@@ -208,6 +226,15 @@ def find_user_for_create(scim_data: dict) -> str | None:
 def create_scim_user(scim_data: dict, settings: SCIMSettings) -> User:
 	existing = find_user_for_create(scim_data)
 	if existing:
+		flags = frappe.db.get_value(
+			"User", existing, ["scim_managed", "scim_deleted"], as_dict=True
+		)
+		# RFC 7644 3.6: a create reusing a deleted resource's userName must not 409.
+		if flags and flags.scim_deleted:
+			return revive_scim_user(existing, scim_data, settings)
+		# Adoption of an unmanaged user requires the operator to have opted in.
+		if flags and not flags.scim_managed and settings.do_not_create_new_user:
+			return adopt_scim_user(existing, scim_data, settings)
 		raise SCIMProvisioningError("User already exists", 409, "uniqueness")
 
 	if settings.do_not_create_new_user:
@@ -219,33 +246,75 @@ def create_scim_user(scim_data: dict, settings: SCIMSettings) -> User:
 		"send_welcome_email": 0,
 		"user_type": settings.default_user_type,
 		"scim_managed": 1,
+		"scim_deleted": 0,
 		**user_data,
 	}
 
+	previous_in_import = frappe.flags.in_import
 	frappe.flags.in_import = True
 	try:
 		user = frappe.get_doc(doc)
 		user.insert(ignore_permissions=True)
 	finally:
-		frappe.flags.in_import = False
+		frappe.flags.in_import = previous_in_import
 
 	apply_default_role(user, settings)
-	provider = get_identity_provider(settings)
-	if provider:
-		sync_provider_roles_from_scim(user, scim_data, provider)
+	apply_provider_roles(user, scim_data, settings)
+	return user
+
+
+def revive_scim_user(user_id: str, scim_data: dict, settings: SCIMSettings) -> User:
+	"""Reinstate a soft-deleted SCIM user."""
+	user = frappe.get_doc("User", user_id)
+	user_data = scim_to_user_data(scim_data, settings, existing_user=user)
+	user_data["scim_managed"] = 1
+	user_data["scim_deleted"] = 0
+	user_data["enabled"] = scim_active_to_enabled(scim_data.get("active", True))
+	user.update(user_data)
+	user.save(ignore_permissions=True)
+	apply_default_role(user, settings)
+	apply_provider_roles(user, scim_data, settings)
+	return user
+
+
+def adopt_scim_user(user_id: str, scim_data: dict, settings: SCIMSettings) -> User:
+	"""Bring a pre-existing Frappe user under SCIM management."""
+	user = frappe.get_doc("User", user_id)
+	user_data = scim_to_user_data(scim_data, settings, existing_user=user)
+	user_data["scim_managed"] = 1
+	user_data["scim_deleted"] = 0
+	user.update(user_data)
+	user.save(ignore_permissions=True)
+	apply_provider_roles(user, scim_data, settings)
 	return user
 
 
 def replace_scim_user(user_id: str, scim_data: dict, settings: SCIMSettings) -> User:
 	user = get_scim_user(user_id)
-	user_data = scim_to_user_data(scim_data, settings)
+	reject_username_change(user, scim_data)
+	user_data = scim_to_user_data(scim_data, settings, existing_user=user)
 	user_data["scim_managed"] = 1
 	user.update(user_data)
 	user.save(ignore_permissions=True)
-	provider = get_identity_provider(settings)
-	if provider:
-		sync_provider_roles_from_scim(user, scim_data, provider)
+	apply_provider_roles(user, scim_data, settings)
 	return user
+
+
+def reject_username_change(user: User, scim_data: dict) -> None:
+	"""Reject a userName change rather than accepting it and discarding it.
+
+	Frappe derives User.name from the email and resets one to the other on every save,
+	so a rename would have to go through frappe.rename_doc, whose cascade into
+	Notification Settings requires write permission the service account does not hold.
+	"""
+	new_email = get_email_from_scim(scim_data)
+	if not new_email or new_email.strip().lower() == (user.name or "").strip().lower():
+		return
+	raise SCIMProvisioningError(
+		"userName cannot be changed; deactivate this resource and create a new one",
+		400,
+		"mutability",
+	)
 
 
 def patch_scim_user(user_id: str, patch_body: dict, settings: SCIMSettings) -> User:
@@ -258,26 +327,37 @@ def patch_scim_user(user_id: str, patch_body: dict, settings: SCIMSettings) -> U
 	for operation in operations:
 		apply_patch_operation(current, operation)
 
-	user_data = scim_to_user_data(current, settings)
+	reject_username_change(user, current)
+	user_data = scim_to_user_data(current, settings, existing_user=user)
 	user_data["scim_managed"] = 1
 	user.update(user_data)
 	user.save(ignore_permissions=True)
-	provider = get_identity_provider(settings)
-	if provider:
-		sync_provider_roles_from_scim(user, current, provider)
+	apply_provider_roles(user, current, settings)
 	return user
 
 
 def deactivate_scim_user(user_id: str) -> None:
+	"""Soft-delete a SCIM user: disable the account and mark it deleted."""
 	user = get_scim_user(user_id)
 	user.enabled = 0
+	user.scim_deleted = 1
 	user.save(ignore_permissions=True)
 
 
 def get_scim_user(user_id: str) -> User:
-	if not frappe.db.exists("User", user_id):
+	"""Resolve a SCIM-managed, non-deleted user, or raise a 404 error."""
+	name = frappe.db.get_value(
+		"User", {"name": user_id, "scim_managed": 1, "scim_deleted": 0}, "name"
+	)
+	if not name:
 		raise SCIMProvisioningError("User not found", 404)
-	return frappe.get_doc("User", user_id)
+	return frappe.get_doc("User", name)
+
+
+def apply_provider_roles(user: User, scim_data: dict, settings: SCIMSettings) -> None:
+	provider = get_identity_provider(settings)
+	if provider:
+		sync_provider_roles_from_scim(user, scim_data, provider)
 
 
 def apply_patch_operation(scim_data: dict, operation: dict) -> None:
@@ -338,18 +418,34 @@ def remove_scim_path(data: dict, path: str) -> None:
 
 
 def set_scim_path(data: dict, path: str, value: Any) -> None:
+	"""Apply a PATCH value at `path`, including filtered multi-valued attributes.
+
+	Accepts `emails[type eq "work"].value` with a scalar and `emails[type eq "work"]`
+	with an object.
+	"""
 	attribute, filter_expr = split_path_filter(path)
-	if filter_expr and path.endswith(".value"):
+	if filter_expr:
 		filter_field, filter_value = parse_value_filter(filter_expr)
 		items = data.setdefault(attribute, [])
 		if not isinstance(items, list):
 			items = []
 			data[attribute] = items
+
+		targets_value = path.endswith(".value")
 		for item in items:
 			if isinstance(item, dict) and item.get(filter_field) == filter_value:
-				item["value"] = value
+				if not targets_value and isinstance(value, dict):
+					item.update(value)
+				else:
+					item["value"] = value
 				return
-		items.append({filter_field: filter_value, "value": value, "primary": filter_field == "type"})
+
+		entry = {filter_field: filter_value}
+		if not targets_value and isinstance(value, dict):
+			entry.update(value)
+		else:
+			entry["value"] = value
+		items.append(entry)
 		return
 
 	if "." in path:
@@ -375,4 +471,5 @@ def parse_value_filter(filter_expr: str) -> tuple[str, str]:
 
 def apply_default_role(user: User, settings: SCIMSettings) -> None:
 	if settings.default_role:
+		user.flags.ignore_permissions = True
 		user.add_roles(settings.default_role)

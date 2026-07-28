@@ -11,6 +11,27 @@ def after_install():
 	ensure_scim_settings()
 
 
+def after_migrate():
+	"""Provision SCIM prerequisites on sites that predate this app version."""
+	ensure_scim_service_user()
+	reconcile_scim_service_user_roles()
+	ensure_scim_settings()
+
+
+def reconcile_scim_service_user_roles():
+	"""Strip roles the service account does not need from earlier installs."""
+	stale = frappe.get_all(
+		"Has Role",
+		filters={"parent": SCIM_SERVICE_USER_EMAIL, "role": "System Manager"},
+		pluck="name",
+	)
+	if not stale:
+		return
+	user = frappe.get_doc("User", SCIM_SERVICE_USER_EMAIL)
+	user.flags.ignore_permissions = True
+	user.remove_roles("System Manager")
+
+
 def ensure_scim_service_user() -> str:
 	if frappe.db.exists("User", SCIM_SERVICE_USER_EMAIL):
 		return SCIM_SERVICE_USER_EMAIL
@@ -26,8 +47,10 @@ def ensure_scim_service_user() -> str:
 			"user_type": "System User",
 		}
 	)
+	# No roles: every SCIM write runs with ignore_permissions, so this account exists
+	# only to own the audit trail. Granting it System Manager would widen the blast
+	# radius of the bearer token without enabling anything.
 	user.insert(ignore_permissions=True)
-	user.add_roles("System Manager")
 	return user.name
 
 

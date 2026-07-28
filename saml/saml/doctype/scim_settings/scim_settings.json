@@ -26,7 +26,7 @@
 			"fieldname": "bearer_token",
 			"fieldtype": "Password",
 			"label": "Bearer Token",
-			"reqd": 1
+			"mandatory_depends_on": "eval:doc.enabled"
 		},
 		{
 			"depends_on": "eval:doc.enabled",

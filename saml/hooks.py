@@ -68,6 +68,7 @@ page_renderer = ["saml.saml.scim_renderer.SCIMApiRenderer"]
 
 # before_install = "saml.install.before_install"
 after_install = "saml.install.after_install"
+after_migrate = ["saml.install.after_migrate"]
 
 # Uninstallation
 # ------------

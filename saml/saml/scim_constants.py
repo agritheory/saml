@@ -5,14 +5,17 @@ SCIM_CONTENT_TYPE = "application/scim+json"
 
 SCIM_USER_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:User"
 SCIM_ENTERPRISE_USER_SCHEMA = "urn:ietf:params:scim:schemas:extension:enterprise:2.0:User"
-SCIM_PATCH_OP_SCHEMA = "urn:ietf:params:scim:schemas:api:messages:2.0:PatchOp"
-SCIM_LIST_RESPONSE_SCHEMA = "urn:ietf:params:scim:schemas:api:messages:2.0:ListResponse"
-SCIM_ERROR_SCHEMA = "urn:ietf:params:scim:schemas:api:messages:2.0:Error"
+# Protocol *message* envelopes live under `api:messages`, NOT `schemas:api:messages`.
+# Resource schemas (above) are the ones under `schemas:`. See RFC 7644 3.4.2 / 3.5.2 / 3.12.
+SCIM_PATCH_OP_SCHEMA = "urn:ietf:params:scim:api:messages:2.0:PatchOp"
+SCIM_LIST_RESPONSE_SCHEMA = "urn:ietf:params:scim:api:messages:2.0:ListResponse"
+SCIM_ERROR_SCHEMA = "urn:ietf:params:scim:api:messages:2.0:Error"
 SCIM_SERVICE_PROVIDER_CONFIG_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:ServiceProviderConfig"
 SCIM_RESOURCE_TYPE_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:ResourceType"
 SCIM_SCHEMA_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:Schema"
 
 SCIM_BASE_PATH = "scim/v2"
+SCIM_PATH_PREFIX = f"/{SCIM_BASE_PATH}"
 
 CORE_SCIM_PATHS = frozenset(
 	{

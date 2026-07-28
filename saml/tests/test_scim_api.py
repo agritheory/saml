@@ -69,7 +69,7 @@ def test_filter_users_by_username():
 	filter_query = {"filter": f'userName eq "{email}"'}
 	response = build_scim_request("GET", "/scim/v2/Users", query=filter_query)
 	assert response.code == 200
-	assert response.data["schemas"] == [SCIM_LIST_RESPONSE_SCHEMA]
+	assert response.data["schemas"] == ["urn:ietf:params:scim:api:messages:2.0:ListResponse"]
 	assert response.data["totalResults"] == 1
 	assert response.data["Resources"][0]["userName"] == email
 	cleanup_scim_user(email)
@@ -144,6 +144,7 @@ def test_entra_sequence_patch_operations_and_delete():
 	assert isinstance(delete_response, SCIMApiResponse)
 	assert delete_response.code == 204
 	assert frappe.db.get_value("User", email, "enabled") == 0
+	cleanup_scim_user(email)
 
 
 @pytest.mark.order(207)

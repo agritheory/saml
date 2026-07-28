@@ -28,6 +28,7 @@ from saml.saml.scim_constants import (
 	SCIM_ENTERPRISE_USER_SCHEMA,
 	SCIM_ERROR_SCHEMA,
 	SCIM_LIST_RESPONSE_SCHEMA,
+	SCIM_PATH_PREFIX,
 	SCIM_RESOURCE_TYPE_SCHEMA,
 	SCIM_SCHEMA_SCHEMA,
 	SCIM_SERVICE_PROVIDER_CONFIG_SCHEMA,
@@ -47,19 +48,33 @@ from saml.saml.scim_provisioning import (
 USER_ID_PATTERN = re.compile(r"^Users/(.+)$")
 
 
+def is_scim_request_path(path: str) -> bool:
+	"""Return True if the request path targets the SCIM API."""
+	path = path or ""
+	return path == SCIM_PATH_PREFIX or path.startswith(f"{SCIM_PATH_PREFIX}/")
+
+
 class SCIMApiResponse(HTTPException):
-	def __init__(self, data: dict | None, status: int) -> None:
+	def __init__(
+		self, data: dict | None, status: int, headers: dict[str, str] | None = None
+	) -> None:
 		super().__init__(data, status)
 		self.data = data
 		self.code = status
+		self.headers = headers or {}
 
 	def get_response(self, environ=None):
-		return scim_response(self.data, self.code)
+		return scim_response(self.data, self.code, self.headers)
 
 
-def scim_response(data: dict | None, status: int = 200) -> Response:
+def scim_response(
+	data: dict | None, status: int = 200, headers: dict[str, str] | None = None
+) -> Response:
 	body = "" if data is None else json.dumps(data)
-	return Response(body, status=status, mimetype=SCIM_CONTENT_TYPE)
+	response = Response(body, status=status, mimetype=SCIM_CONTENT_TYPE)
+	for key, value in (headers or {}).items():
+		response.headers[key] = value
+	return response
 
 
 def scim_error(detail: str, status: int, scim_type: str | None = None) -> dict:
@@ -78,6 +93,22 @@ def provisioning_error_response(error: SCIMProvisioningError) -> SCIMApiResponse
 		scim_error(error.detail, error.status, error.scim_type),
 		error.status,
 	)
+
+
+def exception_response(exc: Exception) -> SCIMApiResponse:
+	"""Map an exception onto a SCIM error envelope."""
+	if isinstance(exc, SCIMProvisioningError):
+		return provisioning_error_response(exc)
+	if isinstance(exc, frappe.PermissionError):
+		return SCIMApiResponse(scim_error("Not permitted", 403), 403)
+	if isinstance(exc, frappe.DuplicateEntryError):
+		return SCIMApiResponse(scim_error(str(exc), 409, "uniqueness"), 409)
+	if isinstance(exc, frappe.ValidationError):
+		detail = frappe.utils.strip_html(str(exc)) or "Invalid request"
+		return SCIMApiResponse(scim_error(detail, 400, "invalidValue"), 400)
+
+	frappe.log_error(title="SCIM request failed", message=frappe.get_traceback())
+	return SCIMApiResponse(scim_error("Internal server error", 500), 500)
 
 
 def get_request_json() -> dict:
@@ -100,7 +131,7 @@ def get_request_json() -> dict:
 
 def authenticate_scim_token() -> None:
 	request = getattr(frappe.local, "request", None)
-	if not request or not request.path.startswith(f"/{SCIM_BASE_PATH}/"):
+	if not request or not is_scim_request_path(request.path):
 		return
 
 	settings = get_scim_settings()
@@ -117,7 +148,9 @@ def authenticate_scim_token() -> None:
 
 	token = auth_header[7:]
 	expected = settings.get_password("bearer_token")
-	if not expected or not hmac.compare_digest(token, expected):
+	# Compare as bytes: hmac.compare_digest rejects non-ASCII str, which would turn a
+	# malformed token from an unauthenticated caller into a 500.
+	if not expected or not hmac.compare_digest(token.encode("utf-8"), expected.encode("utf-8")):
 		raise SCIMApiResponse(scim_error("Invalid token", 401), 401)
 
 	service_user = settings.service_user
@@ -126,21 +159,45 @@ def authenticate_scim_token() -> None:
 
 	frappe.set_user(service_user)
 
+	# frappe.set_user() resets form_dict, but do not rely on that: app.py dispatches any
+	# request carrying `cmd` to the RPC handler before the page renderer runs, which would
+	# let a provisioning token invoke arbitrary whitelisted methods as the service user.
+	# SCIM reads its body straight from the request, so dropping `cmd` here costs nothing.
+	if getattr(frappe.local, "form_dict", None):
+		frappe.local.form_dict.pop("cmd", None)
+
 
 def handle_scim_methods() -> None:
 	request = getattr(frappe.local, "request", None)
 	if not request or request.method not in ("PUT", "PATCH", "DELETE"):
 		return
-	if not request.path.startswith(f"/{SCIM_BASE_PATH}/"):
+	if not is_scim_request_path(request.path):
 		return
 
 	validate_auth()
 	try:
 		response = dispatch_scim_request()
-	except SCIMProvisioningError as error:
-		response = provisioning_error_response(error)
-	frappe.db.commit()
+	except Exception as error:
+		frappe.db.rollback()
+		response = exception_response(error)
+	else:
+		frappe.db.commit()
 	raise response
+
+
+def parse_positive_int(raw: str | None, field: str, default: int | None) -> int | None:
+	"""Parse a non-negative integer request parameter."""
+	if raw is None or raw == "":
+		return default
+	try:
+		value = int(raw)
+	except (TypeError, ValueError) as exc:
+		raise SCIMProvisioningError(
+			f"{field} must be an integer", 400, "invalidValue"
+		) from exc
+	if value < 0:
+		raise SCIMProvisioningError(f"{field} must not be negative", 400, "invalidValue")
+	return value
 
 
 def dispatch_scim_request() -> SCIMApiResponse:
@@ -166,9 +223,8 @@ def dispatch_scim_request() -> SCIMApiResponse:
 	if subpath == "Users":
 		if method == "GET":
 			filter_expression = request.args.get("filter")
-			start_index = int(request.args.get("startIndex") or 1)
-			count = request.args.get("count")
-			count_value = int(count) if count is not None else None
+			start_index = parse_positive_int(request.args.get("startIndex"), "startIndex", 1) or 1
+			count_value = parse_positive_int(request.args.get("count"), "count", None)
 			return SCIMApiResponse(
 				list_scim_users(filter_expression, start_index, count_value),
 				200,
@@ -176,7 +232,10 @@ def dispatch_scim_request() -> SCIMApiResponse:
 		if method == "POST":
 			body = get_request_json()
 			user = create_scim_user(body, settings)
-			return SCIMApiResponse(user_to_scim(user), 201)
+			resource = user_to_scim(user)
+			return SCIMApiResponse(
+				resource, 201, headers={"Location": resource["meta"]["location"]}
+			)
 		raise SCIMProvisioningError("Method not allowed", 405)
 
 	user_match = USER_ID_PATTERN.match(subpath)
@@ -312,15 +371,19 @@ class SCIMApiRenderer:
 		self.http_status_code = http_status_code or 200
 
 	def can_render(self) -> bool:
-		return self.path == SCIM_BASE_PATH or self.path.startswith(f"{SCIM_BASE_PATH}/")
+		# PathResolver strips the leading slash; keep the predicate identical to the one
+		# authenticate_scim_token() uses so routable never outruns authenticated.
+		return is_scim_request_path(f"/{self.path}")
 
 	def render(self) -> Response:
 		try:
 			response = dispatch_scim_request()
-		except SCIMProvisioningError as error:
-			response = provisioning_error_response(error)
+		except Exception as error:
+			frappe.db.rollback()
+			response = exception_response(error)
+		else:
+			frappe.db.commit()
 
-		frappe.db.commit()
 		if response.code == 204:
 			return scim_response(None, 204)
-		return scim_response(response.data, response.code)
+		return scim_response(response.data, response.code, response.headers)

@@ -153,7 +153,8 @@ def user_to_scim(user: User) -> dict:
 	if provider:
 		for mapping in provider.attribute_mappings:
 			value = user.get(mapping.user_field)
-			if value is None:
+			# RFC 7644 3.4: unassigned attributes are omitted rather than sent empty.
+			if value is None or value == "":
 				continue
 			scim_path = scim_path_for_mapping(mapping)
 			if ":" in scim_path:

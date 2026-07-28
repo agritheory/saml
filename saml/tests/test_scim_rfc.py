@@ -26,6 +26,7 @@ from saml.tests.scim_helpers import build_scim_request, cleanup_scim_user, uniqu
 RFC_LIST_RESPONSE = "urn:ietf:params:scim:api:messages:2.0:ListResponse"
 RFC_ERROR = "urn:ietf:params:scim:api:messages:2.0:Error"
 RFC_PATCH_OP = "urn:ietf:params:scim:api:messages:2.0:PatchOp"
+ENTERPRISE_SCHEMA = "urn:ietf:params:scim:schemas:extension:enterprise:2.0:User"
 
 
 def payload(email: str, **extra) -> dict:
@@ -307,6 +308,30 @@ def test_update_without_name_preserves_first_name():
 	cleanup_scim_user(email)
 
 
+@pytest.mark.order(345)
+def test_put_clears_omitted_extension_attribute():
+	"""Mapped extension attributes obey full replace exactly as core attributes do."""
+	email = unique_scim_email("extclear")
+	build_scim_request(
+		"POST",
+		"/scim/v2/Users",
+		payload(
+			email,
+			phoneNumbers=[{"type": "work", "value": "555-0100"}],
+			**{ENTERPRISE_SCHEMA: {"department": "Portland Bakery"}},
+		),
+	)
+	assert frappe.db.get_value("User", email, "location") == "Portland Bakery"
+
+	response = build_scim_request("PUT", f"/scim/v2/Users/{enc(email)}", payload(email))
+	assert response.code == 200
+	assert not frappe.db.get_value("User", email, "phone")
+	assert not frappe.db.get_value("User", email, "location"), (
+		"an extension attribute omitted from a full replace must clear like a core one"
+	)
+	cleanup_scim_user(email)
+
+
 @pytest.mark.order(344)
 def test_put_rejects_username_change_instead_of_discarding_it():
 	old_email = unique_scim_email("oldname")
@@ -319,6 +344,59 @@ def test_put_rejects_username_change_instead_of_discarding_it():
 	assert frappe.db.exists("User", old_email)
 	assert not frappe.db.exists("User", new_email)
 	cleanup_scim_user(old_email)
+
+
+# --------------------------------------------------------------------------
+# Adoption of pre-existing users (opt-in via Do Not Create New User)
+# --------------------------------------------------------------------------
+
+
+@pytest.fixture
+def creates_disabled():
+	settings = frappe.get_doc("SCIM Settings")
+	settings.do_not_create_new_user = 1
+	settings.save(ignore_permissions=True)
+	frappe.clear_cache(doctype="SCIM Settings")
+	yield settings
+	settings.reload()
+	settings.do_not_create_new_user = 0
+	settings.save(ignore_permissions=True)
+	frappe.clear_cache(doctype="SCIM Settings")
+
+
+@pytest.mark.order(370)
+def test_existing_user_is_not_adopted_by_default(unmanaged_user):
+	"""Without the opt-in, a create colliding with an unmanaged user is refused."""
+	response = build_scim_request("POST", "/scim/v2/Users", payload(unmanaged_user))
+	assert response.code == 409
+	assert response.data["scimType"] == "uniqueness"
+	assert frappe.db.get_value("User", unmanaged_user, "scim_managed") == 0
+
+
+@pytest.mark.order(371)
+def test_existing_user_is_adopted_when_creates_are_disabled(unmanaged_user, creates_disabled):
+	response = build_scim_request(
+		"POST",
+		"/scim/v2/Users",
+		payload(unmanaged_user, externalId="adopted-1", displayName="Adopted User"),
+	)
+	assert response.code == 201
+	assert response.data["externalId"] == "adopted-1"
+	assert frappe.db.get_value("User", unmanaged_user, "scim_managed") == 1
+	assert frappe.db.get_value("User", unmanaged_user, "first_name") == "SCIM"
+
+	listed = build_scim_request(
+		"GET", "/scim/v2/Users", query={"filter": f'userName eq "{unmanaged_user}"'}
+	)
+	assert listed.data["totalResults"] == 1
+
+
+@pytest.mark.order(372)
+def test_unknown_user_is_rejected_when_creates_are_disabled(creates_disabled):
+	response = build_scim_request(
+		"POST", "/scim/v2/Users", payload(unique_scim_email("nocreate"))
+	)
+	assert response.code == 404
 
 
 # --------------------------------------------------------------------------

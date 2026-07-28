@@ -46,13 +46,17 @@ def get_saml_attribute_value(
 def apply_scim_attribute_mappings(
 	user_data: dict, scim_data: dict, provider: SAMLLoginKey
 ) -> None:
+	"""Map provider-configured SCIM attributes onto Frappe User fields.
+
+	An absent attribute maps to an empty value so mapped fields obey the same full
+	replace semantics as the core attributes in `scim_to_user_data`.
+	"""
 	for mapping in provider.attribute_mappings:
 		scim_path = scim_path_for_mapping(mapping)
 		if not scim_path:
 			continue
 		value = extract_scim_path(scim_data, scim_path)
-		if value is not None:
-			user_data[mapping.user_field] = value
+		user_data[mapping.user_field] = "" if value is None else value
 
 
 def apply_saml_attribute_mappings(

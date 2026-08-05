@@ -20,7 +20,7 @@ homepage = "https://github.com/agritheory/saml"
 repository = "https://github.com/agritheory/saml"
 
 [tool.poetry]
-version = "16.0.0"
+version = "16.0.1"
 
 [tool.black]
 line-length = 99

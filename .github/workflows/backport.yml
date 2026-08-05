@@ -8,6 +8,10 @@ on:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   backport:
     name: Backport
@@ -25,3 +29,4 @@ jobs:
       - uses: tibdex/backport@v2
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          label_pattern: ^backport-to-(?<base>([^ ]+))$

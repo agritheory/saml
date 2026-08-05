@@ -279,13 +279,7 @@ def has_authenticated_saml_assertion(saml_response: str) -> bool:
 	return False
 
 
-def complete_keycloak_login(username, password):
-	configure_site_for_keycloak()
-	frappe.conf.developer_mode = 1
-	auth, acs_url = build_saml_auth()
-	redirect_url = auth.login(return_to="/app")
-	session = requests.Session()
-	response = session.get(redirect_url, timeout=30)
+def follow_keycloak_login_until_saml_response(session, response, username, password):
 	attempts = 0
 
 	while attempts < 10:
@@ -296,9 +290,7 @@ def complete_keycloak_login(username, password):
 
 		saml_response, relay_state = extract_saml_response(response.text)
 		if saml_response:
-			if not has_authenticated_saml_assertion(saml_response):
-				raise RuntimeError("Expected silent SSO but Keycloak passive authentication failed")
-			return saml_response, relay_state, acs_url
+			return saml_response, relay_state
 
 		forms = parse_forms(response.text, response.url)
 		login_form = next(
@@ -332,6 +324,31 @@ def complete_keycloak_login(username, password):
 		)
 
 	raise RuntimeError("Keycloak SAML login exceeded maximum redirect attempts")
+
+
+def complete_keycloak_login_from_redirect(login_response, username, password):
+	session = requests.Session()
+	response = session.get(login_response["location"], timeout=30, allow_redirects=True)
+	saml_response, relay_state = follow_keycloak_login_until_saml_response(
+		session, response, username, password
+	)
+	if not has_authenticated_saml_assertion(saml_response):
+		raise RuntimeError("Keycloak login did not return an authenticated SAML assertion")
+	return saml_response, relay_state
+
+
+def complete_keycloak_login(username, password):
+	configure_site_for_keycloak()
+	auth, acs_url = build_saml_auth()
+	redirect_url = auth.login(return_to="/app")
+	session = requests.Session()
+	response = session.get(redirect_url, timeout=30)
+	saml_response, relay_state = follow_keycloak_login_until_saml_response(
+		session, response, username, password
+	)
+	if not has_authenticated_saml_assertion(saml_response):
+		raise RuntimeError("Expected silent SSO but Keycloak passive authentication failed")
+	return saml_response, relay_state, acs_url
 
 
 USE_TEST_PROVIDER = object()

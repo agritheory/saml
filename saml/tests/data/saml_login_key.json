@@ -15,6 +15,18 @@
 		"modified": "2025-03-26 08:49:03.197645",
 		"name": "keycloak",
 		"provider_name": "Keycloak",
+		"saml_role_attribute": "Role",
+		"role_source_attribute": "customRoles",
+		"attribute_mappings": [
+			{
+				"parent": "keycloak",
+				"parentfield": "attribute_mappings",
+				"parenttype": "SAML Login Key",
+				"source_attribute": "department",
+				"user_field": "location",
+				"scim_path": "urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:department"
+			}
+		],
 		"roles": [
 			{
 				"parent": "keycloak",

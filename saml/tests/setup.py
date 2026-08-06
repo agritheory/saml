@@ -10,6 +10,7 @@ from frappe.utils.data import getdate
 
 
 def before_test():
+	frappe.flags.in_test = True
 	frappe.clear_cache()
 	setup_complete(
 		{
@@ -38,6 +39,30 @@ def create_test_data():
 	create_role_profile()
 	create_saml_login_key()
 	create_test_users()
+	ensure_scim_test_settings()
+	ensure_scim_keycloak_config_file()
+
+
+def ensure_scim_test_settings():
+	from saml.install import ensure_scim_service_user, ensure_scim_settings
+
+	ensure_scim_settings()
+	settings = frappe.get_doc("SCIM Settings")
+	settings.enabled = 1
+	settings.bearer_token = "test-scim-bearer-token"
+	settings.identity_provider = "keycloak"
+	settings.service_user = ensure_scim_service_user()
+	settings.default_user_type = "System User"
+	settings.default_role = "System Manager"
+	settings.save(ignore_permissions=True)
+	frappe.clear_cache(doctype="SCIM Settings")
+
+
+def ensure_scim_keycloak_config_file():
+	from saml.tests.keycloak_scim_helpers import generate_scim_keycloak_config_file
+
+	settings = frappe.get_doc("SCIM Settings")
+	generate_scim_keycloak_config_file(bearer_token=settings.bearer_token)
 
 
 def create_test_users():
@@ -70,12 +95,15 @@ def create_test_users():
 
 
 def create_role_profile():
-	if frappe.db.exists("Role Profile", "Knowledge Base"):
+	role_profile_name = "Knowledge Base"
+	if frappe.db.exists("Role Profile", role_profile_name):
 		return
 
+	clear_document_lock("Role Profile", role_profile_name)
+
 	role_profile = frappe.new_doc("Role Profile")
-	role_profile.name = "Knowledge Base"
-	role_profile.role_profile = "Knowledge Base"
+	role_profile.name = role_profile_name
+	role_profile.role_profile = role_profile_name
 	for role in [
 		"Blogger",
 		"Knowledge Base Contributor",
@@ -85,6 +113,16 @@ def create_role_profile():
 	]:
 		role_profile.append("roles", {"role": role})
 	role_profile.save(ignore_permissions=True)
+
+
+def clear_document_lock(doctype: str, name: str):
+	import hashlib
+
+	from frappe.utils import file_lock
+
+	signature = hashlib.sha224(f"{doctype}:{name}".encode(), usedforsecurity=False).hexdigest()
+	if file_lock.lock_exists(signature):
+		file_lock.delete_lock(signature)
 
 
 def create_saml_login_key():

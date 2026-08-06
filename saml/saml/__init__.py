@@ -294,35 +294,14 @@ def acs():
 				user.save(ignore_permissions=True)
 				remove_encrypted_password("User", user.name, "password")
 
-		if saml_key.apply_saml_roles:
-			roles = (attributes or {}).get("Role", [])
-			roles_to_apply = []
-			user.flags.ignore_permissions = True
+		from saml.saml.identity_mappings import (
+			apply_saml_attribute_mappings,
+			sync_provider_roles_from_saml,
+		)
 
-			for role in roles:
-				for role_mapping in saml_key.roles:
-					if role_mapping.saml_role == role:
-						if role_mapping.role_or_role_profile == "Role Profile":
-							if user.role_profile_name == role_mapping.user_role:
-								break
-							user.role_profile_name = role_mapping.user_role
-							user.save(ignore_permissions=True)
-							break
-						else:
-							if user.role_profile_name:
-								user.roles = []
-								user.role_profile_name = ""
-								user.save(ignore_permissions=True)
-							roles_to_apply.append(role_mapping.user_role)
-
-			if roles_to_apply:
-				user.add_roles(roles_to_apply)
-
-			if saml_key.match_saml_roles:
-				for has_role in reversed(user.roles):
-					if has_role.role not in roles_to_apply:
-						user.roles.remove(has_role)
-				user.save(ignore_permissions=True)
+		if apply_saml_attribute_mappings(user, attributes, friendly_name, saml_key):
+			user.save(ignore_permissions=True)
+		sync_provider_roles_from_saml(user, saml_key, attributes)
 
 		# Log the user in
 		frappe.local.login_manager.user = user.name

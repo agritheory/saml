@@ -76,7 +76,12 @@ For license information, please see license.txt-->
 </div>
 <br>
 
-SAML2 Login for Frappe apps
+SAML2 Login and SCIM 2.0 provisioning for Frappe apps
+
+- **SAML** — single sign-on authentication
+- **SCIM** — automated user create, update, and deactivation from your IdP
+
+See [SAML Integration docs](saml/docs/index.md) for setup details including SCIM provisioning.
 
 ## Install Instructions
 

@@ -34,7 +34,8 @@
 		"roles",
 		"attribute_mappings",
 		"apply_saml_roles",
-		"match_saml_roles"
+		"match_saml_roles",
+		"table_mappings"
 	],
 	"fields": [
 		{
@@ -243,6 +244,13 @@
 			"fieldname": "saml_domains",
 			"fieldtype": "Text",
 			"label": "SAML Domains"
+		},
+		{
+			"description": "Map multi-valued SCIM attributes into child tables on User. Applies to SCIM provisioning only.",
+			"fieldname": "table_mappings",
+			"fieldtype": "Table",
+			"label": "Table Mappings",
+			"options": "SAML Table Mapping"
 		}
 	],
 	"index_web_pages_for_search": 1,

@@ -4,7 +4,7 @@ For license information, please see license.txt-->
 # SAML Integration
 
 <div class="byline">
-  Tyler Matteson 2026-06-16
+  Tyler Matteson 2026-07-26
 </div>
 
 
@@ -226,7 +226,7 @@ Users provisioned via SCIM are marked **SCIM Managed** and cannot set or reset t
 
 SCIM provisioning uses the **Identity Provider** linked in SCIM Settings — a **SAML Login Key** record. Attribute and role mappings live on that provider, not in SCIM Settings.
 
-Configure mappings once on the SAML Login Key under **Mappings**:
+Configure mappings once on the SAML Login Key under **Mappings** (attribute mappings, role mappings, and table mappings):
 
 #### Attribute mappings
 
@@ -256,6 +256,45 @@ Use the **Role Mappings** child table on the SAML Login Key for both SAML SSO an
 For SCIM, configure your IdP to write group or role names into the SCIM attribute named by **SCIM Role Source Attribute**. If it is empty, SCIM role sync is skipped and only **Default Role** applies on create. SCIM role sync applies only to rows where **Role or Role Profile** is **Role**; **Role Profile** mappings are used for SAML SSO only.
 
 For SAML SSO, enable **Apply SAML Roles** and optionally **Match SAML Roles** as before.
+
+#### Table mappings
+
+Attribute mappings write a single value to a single User field. They cannot populate a **child table**. Use the **Table Mappings** child table on the SAML Login Key instead. Table mappings reconcile on **SCIM** create/replace/patch and on **SAML login** (using the short attribute name from the SCIM path leaf, for example `employeeNumber`).
+
+| Column | Description |
+|--------|-------------|
+| **SCIM Path** | Full SCIM path carrying the identifiers |
+| **Delimiter** | Separator when the IdP sends several identifiers in one string (default `,`) |
+| **User Table Field** | Child table fieldname on User, for example `social_logins` or `barcodes` |
+| **Value Field** | Field in the child table holding the identifier, for example `userid` or `barcode` |
+| **Ownership Field** | Optional child field marking which rows the IdP owns, for example `provider` or `barcode_type` |
+| **Ownership Value** | Value written to the ownership field on issued rows, for example `keycloak` or `ID Card` |
+
+Add one row per SCIM attribute you want to reconcile into a child table. Entra ID directory extension attributes are single-valued, so the usual configuration is one attribute holding a delimited list.
+
+**Example row for Keycloak tests (`social_logins`):**
+
+| SCIM Path | User Table Field | Value Field | Ownership Field | Ownership Value |
+|-----------|------------------|-------------|-----------------|-----------------|
+| `urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:employeeNumber` | `social_logins` | `userid` | `provider` | `keycloak` |
+
+**Example row for ERPNext ID cards (`barcodes`):**
+
+| SCIM Path | User Table Field | Value Field | Ownership Field | Ownership Value |
+|-----------|------------------|-------------|-----------------|-----------------|
+| `urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:employeeNumber` | `barcodes` | `barcode` | `barcode_type` | `ID Card` |
+
+Before enabling ownership scoping on ERPNext, add `ID Card` as an option on Item Barcode `barcode_type` via Customize Form.
+
+**Reconciliation.** On every create, replace, and patch the provider's list is diffed against the rows it owns. Identifiers it lists that are not present are appended; identifiers it no longer lists are revoked.
+
+**Revocation keeps history.** A revoked identifier is not deleted. Its stored value gains a `~REVOKED~` suffix and a timestamp, so a scan of the physical card no longer matches while the row remains on the User.
+
+**Ownership.** Set the ownership field and value to fence off rows the IdP manages. Rows outside that scope are never issued or revoked, so locally added rows survive.
+
+**Absent versus empty.** If the source attribute is missing from a request, the IdP is asserting nothing and rows are left alone; this is also what a PATCH `remove` on that path does. An attribute that is present but empty revokes every row the provider owns in that mapping.
+
+**Conflicts.** Identifiers are checked before anything is written. An identifier already assigned to another user returns `409` with `scimType: uniqueness`.
 
 ### SCIM Settings reference
 
@@ -296,6 +335,7 @@ Entra typically uses `PATCH` with PatchOp `Operations` arrays for updates.
 ### Limitations (v1)
 
 - **No `/Groups` resource** — use the custom-attribute role convention above, or open a follow-on ticket if you need Okta Group Push or Entra group provisioning
+- **Mapped attributes are never cleared** — if a mapped attribute stops arriving, the last value stays on the User. Table mappings are the exception: an empty source attribute revokes the rows the provider owns for that mapping
 - **Filtering** — only `userName eq` and `externalId eq` are supported; other expressions return `400 invalidFilter`
 - **No bulk operations** — `/scim/v2/Bulk` is not supported
 - **No ETag/versioning**

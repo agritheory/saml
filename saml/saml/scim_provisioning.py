@@ -10,6 +10,13 @@ from urllib.parse import quote
 import frappe
 from frappe.utils import validate_email_address
 
+from saml.saml.credential_sync import (
+	CredentialConflictError,
+	active_values_for_scim,
+	assert_scim_table_mappings_available,
+	get_table_sync_configs,
+	sync_provider_table_mappings_from_scim,
+)
 from saml.saml.identity_mappings import (
 	apply_scim_attribute_mappings,
 	get_identity_provider,
@@ -24,7 +31,13 @@ from saml.saml.scim_constants import (
 	scim_active_to_enabled,
 	scim_language_to_frappe,
 )
-from saml.saml.scim_paths import deep_get, extract_scim_path, set_deep
+from saml.saml.scim_paths import (
+	deep_get,
+	extract_scim_path,
+	remove_scim_resource_path,
+	set_deep,
+	set_scim_resource_path,
+)
 
 if TYPE_CHECKING:
 	from frappe.core.doctype.user.user import User
@@ -163,6 +176,11 @@ def user_to_scim(user: User) -> dict:
 			elif scim_path:
 				resource[scim_path] = value
 
+		for config in get_table_sync_configs(provider):
+			values = active_values_for_scim(user, config)
+			if values is not None:
+				set_scim_resource_path(resource, config.source_attribute, values)
+
 	return resource
 
 
@@ -227,9 +245,7 @@ def find_user_for_create(scim_data: dict) -> str | None:
 def create_scim_user(scim_data: dict, settings: SCIMSettings) -> User:
 	existing = find_user_for_create(scim_data)
 	if existing:
-		flags = frappe.db.get_value(
-			"User", existing, ["scim_managed", "scim_deleted"], as_dict=True
-		)
+		flags = frappe.db.get_value("User", existing, ["scim_managed", "scim_deleted"], as_dict=True)
 		# RFC 7644 3.6: a create reusing a deleted resource's userName must not 409.
 		if flags and flags.scim_deleted:
 			return revive_scim_user(existing, scim_data, settings)
@@ -241,6 +257,7 @@ def create_scim_user(scim_data: dict, settings: SCIMSettings) -> User:
 	if settings.do_not_create_new_user:
 		raise SCIMProvisioningError("User not found", 404)
 
+	assert_credentials_provisionable(scim_data, settings)
 	user_data = scim_to_user_data(scim_data, settings)
 	doc = {
 		"doctype": "User",
@@ -260,13 +277,14 @@ def create_scim_user(scim_data: dict, settings: SCIMSettings) -> User:
 		frappe.flags.in_import = previous_in_import
 
 	apply_default_role(user, settings)
-	apply_provider_roles(user, scim_data, settings)
+	apply_provider_state(user, scim_data, settings)
 	return user
 
 
 def revive_scim_user(user_id: str, scim_data: dict, settings: SCIMSettings) -> User:
 	"""Reinstate a soft-deleted SCIM user."""
 	user = frappe.get_doc("User", user_id)
+	assert_credentials_provisionable(scim_data, settings, user.name)
 	user_data = scim_to_user_data(scim_data, settings, existing_user=user)
 	user_data["scim_managed"] = 1
 	user_data["scim_deleted"] = 0
@@ -274,30 +292,32 @@ def revive_scim_user(user_id: str, scim_data: dict, settings: SCIMSettings) -> U
 	user.update(user_data)
 	user.save(ignore_permissions=True)
 	apply_default_role(user, settings)
-	apply_provider_roles(user, scim_data, settings)
+	apply_provider_state(user, scim_data, settings)
 	return user
 
 
 def adopt_scim_user(user_id: str, scim_data: dict, settings: SCIMSettings) -> User:
 	"""Bring a pre-existing Frappe user under SCIM management."""
 	user = frappe.get_doc("User", user_id)
+	assert_credentials_provisionable(scim_data, settings, user.name)
 	user_data = scim_to_user_data(scim_data, settings, existing_user=user)
 	user_data["scim_managed"] = 1
 	user_data["scim_deleted"] = 0
 	user.update(user_data)
 	user.save(ignore_permissions=True)
-	apply_provider_roles(user, scim_data, settings)
+	apply_provider_state(user, scim_data, settings)
 	return user
 
 
 def replace_scim_user(user_id: str, scim_data: dict, settings: SCIMSettings) -> User:
 	user = get_scim_user(user_id)
 	reject_username_change(user, scim_data)
+	assert_credentials_provisionable(scim_data, settings, user.name)
 	user_data = scim_to_user_data(scim_data, settings, existing_user=user)
 	user_data["scim_managed"] = 1
 	user.update(user_data)
 	user.save(ignore_permissions=True)
-	apply_provider_roles(user, scim_data, settings)
+	apply_provider_state(user, scim_data, settings)
 	return user
 
 
@@ -329,11 +349,12 @@ def patch_scim_user(user_id: str, patch_body: dict, settings: SCIMSettings) -> U
 		apply_patch_operation(current, operation)
 
 	reject_username_change(user, current)
+	assert_credentials_provisionable(current, settings, user.name)
 	user_data = scim_to_user_data(current, settings, existing_user=user)
 	user_data["scim_managed"] = 1
 	user.update(user_data)
 	user.save(ignore_permissions=True)
-	apply_provider_roles(user, current, settings)
+	apply_provider_state(user, current, settings)
 	return user
 
 
@@ -355,10 +376,29 @@ def get_scim_user(user_id: str) -> User:
 	return frappe.get_doc("User", name)
 
 
-def apply_provider_roles(user: User, scim_data: dict, settings: SCIMSettings) -> None:
+def assert_credentials_provisionable(
+	scim_data: dict, settings: SCIMSettings, exclude_user: str | None = None
+) -> None:
+	"""Reject conflicting credential identifiers before any part of the User is written."""
 	provider = get_identity_provider(settings)
-	if provider:
-		sync_provider_roles_from_scim(user, scim_data, provider)
+	if not provider:
+		return
+	try:
+		assert_scim_table_mappings_available(scim_data, provider, exclude_user)
+	except CredentialConflictError as error:
+		raise SCIMProvisioningError(str(error), 409, "uniqueness") from error
+
+
+def apply_provider_state(user: User, scim_data: dict, settings: SCIMSettings) -> None:
+	"""Apply the role and credential state the identity provider asserts for this user."""
+	provider = get_identity_provider(settings)
+	if not provider:
+		return
+	sync_provider_roles_from_scim(user, scim_data, provider)
+	try:
+		sync_provider_table_mappings_from_scim(user, scim_data, provider)
+	except CredentialConflictError as error:
+		raise SCIMProvisioningError(str(error), 409, "uniqueness") from error
 
 
 def apply_patch_operation(scim_data: dict, operation: dict) -> None:
@@ -396,6 +436,11 @@ def merge_scim_dict(target: dict, source: dict) -> None:
 
 
 def remove_scim_path(data: dict, path: str) -> None:
+	path = (path or "").strip()
+	if ":" in path and not path.startswith("name."):
+		remove_scim_resource_path(data, path)
+		return
+
 	attribute, filter_expr = split_path_filter(path)
 	if filter_expr:
 		items = data.get(attribute)
@@ -424,6 +469,11 @@ def set_scim_path(data: dict, path: str, value: Any) -> None:
 	Accepts `emails[type eq "work"].value` with a scalar and `emails[type eq "work"]`
 	with an object.
 	"""
+	path = (path or "").strip()
+	if ":" in path and not path.startswith("name."):
+		set_scim_resource_path(data, path, value)
+		return
+
 	attribute, filter_expr = split_path_filter(path)
 	if filter_expr:
 		filter_field, filter_value = parse_value_filter(filter_expr)

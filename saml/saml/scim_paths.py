@@ -41,3 +41,44 @@ def extract_scim_path(data: dict, path: str) -> Any:
 		return None
 
 	return deep_get(data, path)
+
+
+def set_scim_resource_path(resource: dict, path: str, value: Any) -> None:
+	"""Write a value onto a SCIM resource at the same paths extract_scim_path reads."""
+	path = (path or "").strip()
+	if not path:
+		return
+
+	if ":" in path and not path.startswith("name."):
+		extension_key, _, attribute = path.rpartition(":")
+		resource.setdefault(extension_key, {})[attribute] = value
+		return
+
+	if "." in path:
+		set_deep(resource, path, value)
+		return
+
+	resource[path] = value
+
+
+def remove_scim_resource_path(resource: dict, path: str) -> None:
+	"""Remove a value from a SCIM resource at the same paths extract_scim_path reads."""
+	path = (path or "").strip()
+	if not path:
+		return
+
+	if ":" in path and not path.startswith("name."):
+		extension_key, _, attribute = path.rpartition(":")
+		extension = resource.get(extension_key)
+		if isinstance(extension, dict):
+			extension.pop(attribute, None)
+		return
+
+	if "." in path:
+		parent_path, leaf = path.rsplit(".", 1)
+		parent = deep_get(resource, parent_path)
+		if isinstance(parent, dict):
+			parent.pop(leaf, None)
+		return
+
+	resource.pop(path, None)

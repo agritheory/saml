@@ -108,6 +108,7 @@ after_migrate = ["saml.install.after_migrate"]
 
 doc_events = {
 	"User": {
+		"before_validate": "saml.overrides.user.sync_notification_settings_for_scim_user",
 		"validate": "saml.overrides.user.validate_reset_password",
 		"validate_reset_password": "saml.overrides.user.validate_reset_password",
 	}

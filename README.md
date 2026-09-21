@@ -138,10 +138,65 @@ pytest ./apps/saml/saml/tests -s --disable-warnings
 
 ## Tests (using Keycloak)
 
-This app comes with a `docker-compose` file that sets up a Keycloak instance for testing, which would rely on your current site's information.
+This app comes with a `docker-compose` file that sets up a Keycloak instance for testing, which relies on your current site's bench port and SCIM bearer token.
 
-In the tests folder, simply run the following script to get the active bench port and start the Keycloak instance:
+From `apps/saml/saml/tests`, run:
 
 ```shell
 ./keycloak.sh --build
 ```
+
+Keycloak listens on [http://localhost:8080](http://localhost:8080). The imported realm is **`frappe`**.
+
+### Test credentials
+
+These are local-dev / test-only values from `saml/tests/setup.py`, `saml/tests/realm-template.json`, and `saml/tests/docker-compose.yml`.
+
+#### Frappe site (direct login)
+
+| User | Password | Notes |
+| --- | --- | --- |
+| `Administrator` | `admin` | Set by `before_test` / setup wizard during test bootstrap |
+
+Use this for desk access, DocType setup, and tests that call `frappe.set_user("Administrator")`. It is not a SAML user.
+
+#### Keycloak admin console
+
+| User | Password | URL |
+| --- | --- | --- |
+| `admin` | `admin` | [http://localhost:8080/admin](http://localhost:8080/admin) (master realm) |
+
+Use this to inspect the **`frappe`** realm, SAML client, and (optionally) the SCIM user-storage plugin.
+
+#### Keycloak realm users (SAML login)
+
+SAML tests authenticate against Keycloak, then land in Frappe as the matching email user. Log in at your site login page with the **Keycloak** provider (or follow the auto-SAML redirect when enabled in the test fixture).
+
+| Keycloak username | Frappe email | Password | Typical test role |
+| --- | --- | --- | --- |
+| `warehouse` | `warehouse@ambrosiapieco.example` | `apc-warehouse` | Warehouse Manager |
+| `kb.contributor` | `kb.contributor@ambrosiapieco.example` | `apc-kb-contributor` | Knowledge Base |
+| `saml.existing` | `saml.existing@ambrosiapieco.example` | `apc-saml-existing` | Pre-existing SAML-managed Frappe user |
+| `picker` | `picker@ambrosiapieco.example` | `apc-picker` | Stock User |
+| `saml.admin` | `saml.admin@ambrosiapieco.example` | `apc-saml-admin` | System Administrator |
+| `scim.demo` | `scim.demo@ambrosiapieco.example` | `apc-scim-demo` | Table-mapping demo (see below) |
+
+SAML-managed users do not use Frappe passwords in normal operation; the IdP password above is what you enter at Keycloak.
+
+#### Table mapping demo (`social_logins` on login)
+
+`scim.demo` lives in the Keycloak realm fixture only — not in Frappe until the first SAML login. Keycloak sends a SAML `employeeNumber` attribute (`APC-DEMO-001`); the Keycloak SAML Login Key table mapping writes it to **User → Social Logins** (`provider=keycloak`) during ACS.
+
+1. Confirm the user does not exist in Frappe (or delete it to replay the demo).
+2. Rebuild Keycloak if you changed `realm-template.json`: `./keycloak.sh reset && ./keycloak.sh --build`
+3. Sign in as `scim.demo` / `apc-scim-demo` via Keycloak SAML.
+4. As `Administrator`, open **User → scim.demo@ambrosiapieco.example → Social Logins** and confirm the `keycloak` / `APC-DEMO-001` row.
+
+#### SCIM API (not interactive login)
+
+| Setting | Value |
+| --- | --- |
+| Bearer token | `test-scim-bearer-token` |
+| Service user | `scim-provisioner@system.local` (audit owner only; no password login) |
+| Endpoint | `http://localhost:<bench-port>/scim/v2` |
+

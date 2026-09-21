@@ -3,6 +3,31 @@
 
 import frappe
 from frappe import _
+from frappe.utils import cint
+
+
+def sync_notification_settings_for_scim_user(user, method=None):
+	"""Align Notification Settings before User.validate toggles them.
+
+	SCIM provisioning saves users with ignore_permissions, but Frappe's
+	check_enable_disable still calls toggle_notifications without that flag.
+	Pre-sync the settings so the toggle becomes a no-op.
+	"""
+	if user.is_new() or not user.scim_managed:
+		return
+
+	doc_before = user.get_doc_before_save()
+	if not doc_before or cint(doc_before.enabled) == cint(user.enabled):
+		return
+
+	if not frappe.db.exists("Notification Settings", user.name):
+		return
+
+	settings = frappe.get_doc("Notification Settings", user.name)
+	enable = cint(user.enabled)
+	if settings.enabled != enable:
+		settings.enabled = enable
+		settings.save(ignore_permissions=True)
 
 
 def validate_reset_password(user, method=None):

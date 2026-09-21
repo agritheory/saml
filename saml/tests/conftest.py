@@ -45,6 +45,19 @@ def db_instance():
 	yield frappe.db
 
 
+@pytest.fixture(scope="session", autouse=True)
+def ensure_saml_test_fixtures(db_instance):
+	"""Load SAML/SCIM fixture data when pytest starts.
+
+	Full site bootstrap (setup wizard) stays in before_test for bench reinstall flows.
+	This ensures the Keycloak provider, SCIM settings, Keycloak JSON artifacts, and
+	test users exist so pytest works after bench migrate without re-running before_test.
+	"""
+	from saml.tests.setup import create_test_data
+
+	create_test_data()
+
+
 @pytest.fixture(autouse=True)
 def reset_saml_request_state():
 	from saml.saml.doctype.saml_login_key.saml_login_key import clear_auto_saml_settings_cache

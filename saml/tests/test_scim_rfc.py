@@ -148,9 +148,7 @@ def test_recreate_after_delete_succeeds():
 	build_scim_request("POST", "/scim/v2/Users", payload(email, externalId="rehire-1"))
 	build_scim_request("DELETE", f"/scim/v2/Users/{enc(email)}")
 
-	response = build_scim_request(
-		"POST", "/scim/v2/Users", payload(email, externalId="rehire-2")
-	)
+	response = build_scim_request("POST", "/scim/v2/Users", payload(email, externalId="rehire-2"))
 	assert response.code == 201, "re-provisioning a deactivated user must not 409"
 	assert response.data["active"] is True
 	assert response.data["externalId"] == "rehire-2"
@@ -302,9 +300,9 @@ def test_update_without_name_preserves_first_name():
 	nameless.pop("name")
 	response = build_scim_request("PUT", f"/scim/v2/Users/{enc(email)}", nameless)
 	assert response.code == 200
-	assert frappe.db.get_value("User", email, "first_name") == "SCIM", (
-		"an update carrying no givenName must not fall back to the userName local-part"
-	)
+	assert (
+		frappe.db.get_value("User", email, "first_name") == "SCIM"
+	), "an update carrying no givenName must not fall back to the userName local-part"
 	cleanup_scim_user(email)
 
 
@@ -326,9 +324,9 @@ def test_put_clears_omitted_extension_attribute():
 	response = build_scim_request("PUT", f"/scim/v2/Users/{enc(email)}", payload(email))
 	assert response.code == 200
 	assert not frappe.db.get_value("User", email, "phone")
-	assert not frappe.db.get_value("User", email, "location"), (
-		"an extension attribute omitted from a full replace must clear like a core one"
-	)
+	assert not frappe.db.get_value(
+		"User", email, "location"
+	), "an extension attribute omitted from a full replace must clear like a core one"
 	cleanup_scim_user(email)
 
 
@@ -393,9 +391,7 @@ def test_existing_user_is_adopted_when_creates_are_disabled(unmanaged_user, crea
 
 @pytest.mark.order(372)
 def test_unknown_user_is_rejected_when_creates_are_disabled(creates_disabled):
-	response = build_scim_request(
-		"POST", "/scim/v2/Users", payload(unique_scim_email("nocreate"))
-	)
+	response = build_scim_request("POST", "/scim/v2/Users", payload(unique_scim_email("nocreate")))
 	assert response.code == 404
 
 
@@ -425,6 +421,13 @@ def test_set_scim_path_does_not_fabricate_primary():
 	data: dict = {"phoneNumbers": []}
 	set_scim_path(data, 'phoneNumbers[type eq "mobile"].value', "555-0199")
 	assert data["phoneNumbers"] == [{"type": "mobile", "value": "555-0199"}]
+
+
+@pytest.mark.order(353)
+def test_set_scim_path_handles_extension_urn():
+	data: dict = {}
+	set_scim_path(data, f"{ENTERPRISE_SCHEMA}:employeeNumber", "APC-2202")
+	assert data[ENTERPRISE_SCHEMA]["employeeNumber"] == "APC-2202"
 
 
 # --------------------------------------------------------------------------

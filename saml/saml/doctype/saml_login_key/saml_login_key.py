@@ -69,6 +69,7 @@ class SAMLLoginKey(Document):
 		self.validate_auto_saml_paths()
 		self.validate_idp_metadata_sync_cron()
 		self.validate_attribute_mappings()
+		self.validate_table_mappings()
 
 	def on_update(self):
 		auto_saml_fields = (
@@ -135,9 +136,17 @@ class SAMLLoginKey(Document):
 
 		user_meta = frappe.get_meta("User")
 		for row in self.attribute_mappings:
-			if not user_meta.has_field(row.user_field):
+			user_field = user_meta.get_field(row.user_field)
+			if not user_field:
 				frappe.throw(
 					_("User field does not exist: {0}").format(row.user_field),
+					title=_("Invalid Mapping"),
+				)
+			if user_field.fieldtype == "Table":
+				frappe.throw(
+					_("Attribute mappings cannot target child tables. Use Table Mappings for {0}.").format(
+						row.user_field
+					),
 					title=_("Invalid Mapping"),
 				)
 			scim_path = (row.scim_path or row.source_attribute or "").strip()
@@ -153,6 +162,59 @@ class SAMLLoginKey(Document):
 					_("Attribute mapping cannot target core SCIM attribute: {0}").format(scim_path),
 					title=_("Invalid Mapping"),
 				)
+
+	def validate_table_mappings(self):
+		from saml.saml.scim_constants import CORE_SCIM_PATHS
+
+		for row in self.table_mappings or []:
+			source_attribute = (row.scim_path or "").strip()
+			if not source_attribute:
+				continue
+
+			normalized_path = (
+				source_attribute.rsplit(":", 1)[-1].lower()
+				if ":" in source_attribute
+				else source_attribute.lower()
+			)
+			if normalized_path in CORE_SCIM_PATHS or normalized_path.split(".")[0] in CORE_SCIM_PATHS:
+				frappe.throw(
+					_("Table mapping SCIM path cannot target core SCIM attribute: {0}").format(source_attribute),
+					title=_("Invalid Table Mapping"),
+				)
+
+			table_field = (row.user_table_field or "").strip()
+			value_field = (row.value_field or "").strip()
+			if not table_field or not value_field:
+				frappe.throw(
+					_("User Table Field and Value Field are required for each table mapping row."),
+					title=_("Invalid Table Mapping"),
+				)
+
+			if not (row.delimiter or "").strip():
+				frappe.throw(
+					_("Delimiter cannot be blank."),
+					title=_("Invalid Table Mapping"),
+				)
+
+			user_table_field = frappe.get_meta("User").get_field(table_field)
+			if not user_table_field or user_table_field.fieldtype != "Table":
+				frappe.throw(
+					_("User field {0} does not exist or is not a child table.").format(table_field),
+					title=_("Invalid Table Mapping"),
+				)
+
+			child_meta = frappe.get_meta(user_table_field.options)
+			for fieldname, label in (
+				(value_field, "Value Field"),
+				(row.scope_field, "Ownership Field"),
+			):
+				if fieldname and not child_meta.get_field(fieldname):
+					frappe.throw(
+						_("{0} {1} does not exist on child table {2}.").format(
+							label, fieldname, user_table_field.options
+						),
+						title=_("Invalid Table Mapping"),
+					)
 
 	def sort_by_role_profile(self):
 		roles, role_profiles = [], []

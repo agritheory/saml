@@ -25,22 +25,32 @@ def scim_path_for_mapping(mapping) -> str:
 	return (mapping.scim_path or mapping.source_attribute or "").strip()
 
 
+def get_saml_attribute_raw(
+	attributes: dict | None,
+	friendly_name: dict | None,
+	source_attribute: str,
+) -> Any:
+	for source in (friendly_name, attributes):
+		if not source or source_attribute not in source:
+			continue
+		values = source.get(source_attribute) or []
+		if not values:
+			continue
+		if len(values) == 1:
+			return values[0]
+		return values
+	return None
+
+
 def get_saml_attribute_value(
 	attributes: dict | None,
 	friendly_name: dict | None,
 	source_attribute: str,
 ) -> Any:
-	if friendly_name and source_attribute in friendly_name:
-		values = friendly_name.get(source_attribute) or []
-		if values:
-			return values[0]
-
-	if attributes and source_attribute in attributes:
-		values = attributes.get(source_attribute) or []
-		if values:
-			return values[0]
-
-	return None
+	raw = get_saml_attribute_raw(attributes, friendly_name, source_attribute)
+	if isinstance(raw, list):
+		return raw[0] if raw else None
+	return raw
 
 
 def apply_scim_attribute_mappings(

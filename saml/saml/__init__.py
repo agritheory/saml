@@ -294,6 +294,10 @@ def acs():
 				user.save(ignore_permissions=True)
 				remove_encrypted_password("User", user.name, "password")
 
+		from saml.saml.credential_sync import (
+			CredentialConflictError,
+			sync_provider_table_mappings_from_saml,
+		)
 		from saml.saml.identity_mappings import (
 			apply_saml_attribute_mappings,
 			sync_provider_roles_from_saml,
@@ -302,6 +306,15 @@ def acs():
 		if apply_saml_attribute_mappings(user, attributes, friendly_name, saml_key):
 			user.save(ignore_permissions=True)
 		sync_provider_roles_from_saml(user, saml_key, attributes)
+		try:
+			sync_provider_table_mappings_from_saml(user, attributes, friendly_name, saml_key)
+		except CredentialConflictError as error:
+			frappe.respond_as_web_page(
+				_("SAML Login Failed"),
+				str(error),
+				http_status_code=409,
+			)
+			return
 
 		# Log the user in
 		frappe.local.login_manager.user = user.name

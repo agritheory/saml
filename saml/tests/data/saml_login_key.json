@@ -17,6 +17,19 @@
 		"provider_name": "Keycloak",
 		"saml_role_attribute": "Role",
 		"role_source_attribute": "customRoles",
+		"table_mappings": [
+			{
+				"parent": "keycloak",
+				"parentfield": "table_mappings",
+				"parenttype": "SAML Login Key",
+				"scim_path": "urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:employeeNumber",
+				"delimiter": ",",
+				"user_table_field": "social_logins",
+				"value_field": "userid",
+				"scope_field": "provider",
+				"scope_value": "keycloak"
+			}
+		],
 		"attribute_mappings": [
 			{
 				"parent": "keycloak",

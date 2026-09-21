@@ -17,7 +17,6 @@ from urllib.parse import unquote
 
 import frappe
 from frappe.auth import validate_auth
-from werkzeug.exceptions import HTTPException
 from werkzeug.wrappers import Response
 
 from saml.saml.doctype.scim_settings.scim_settings import get_scim_settings
@@ -34,6 +33,7 @@ from saml.saml.scim_constants import (
 	SCIM_SERVICE_PROVIDER_CONFIG_SCHEMA,
 	SCIM_USER_SCHEMA,
 )
+from saml.saml.credential_sync import CredentialConflictError
 from saml.saml.scim_provisioning import (
 	SCIMProvisioningError,
 	create_scim_user,
@@ -54,11 +54,9 @@ def is_scim_request_path(path: str) -> bool:
 	return path == SCIM_PATH_PREFIX or path.startswith(f"{SCIM_PATH_PREFIX}/")
 
 
-class SCIMApiResponse(HTTPException):
-	def __init__(
-		self, data: dict | None, status: int, headers: dict[str, str] | None = None
-	) -> None:
-		super().__init__(data, status)
+class SCIMApiResponse(Exception):
+	def __init__(self, data: dict | None, status: int, headers: dict[str, str] | None = None) -> None:
+		super().__init__(data, status, headers)
 		self.data = data
 		self.code = status
 		self.headers = headers or {}
@@ -99,6 +97,8 @@ def exception_response(exc: Exception) -> SCIMApiResponse:
 	"""Map an exception onto a SCIM error envelope."""
 	if isinstance(exc, SCIMProvisioningError):
 		return provisioning_error_response(exc)
+	if isinstance(exc, CredentialConflictError):
+		return SCIMApiResponse(scim_error(str(exc), 409, "uniqueness"), 409)
 	if isinstance(exc, frappe.PermissionError):
 		return SCIMApiResponse(scim_error("Not permitted", 403), 403)
 	if isinstance(exc, frappe.DuplicateEntryError):
@@ -181,7 +181,8 @@ def handle_scim_methods() -> None:
 		frappe.db.rollback()
 		response = exception_response(error)
 	else:
-		frappe.db.commit()
+		# Raising Response skips Frappe request teardown; persist the SCIM write here.
+		frappe.db.commit()  # nosemgrep: frappe-manual-commit
 	raise response
 
 
@@ -192,9 +193,7 @@ def parse_positive_int(raw: str | None, field: str, default: int | None) -> int 
 	try:
 		value = int(raw)
 	except (TypeError, ValueError) as exc:
-		raise SCIMProvisioningError(
-			f"{field} must be an integer", 400, "invalidValue"
-		) from exc
+		raise SCIMProvisioningError(f"{field} must be an integer", 400, "invalidValue") from exc
 	if value < 0:
 		raise SCIMProvisioningError(f"{field} must not be negative", 400, "invalidValue")
 	return value
@@ -233,9 +232,7 @@ def dispatch_scim_request() -> SCIMApiResponse:
 			body = get_request_json()
 			user = create_scim_user(body, settings)
 			resource = user_to_scim(user)
-			return SCIMApiResponse(
-				resource, 201, headers={"Location": resource["meta"]["location"]}
-			)
+			return SCIMApiResponse(resource, 201, headers={"Location": resource["meta"]["location"]})
 		raise SCIMProvisioningError("Method not allowed", 405)
 
 	user_match = USER_ID_PATTERN.match(subpath)
@@ -297,11 +294,30 @@ def schemas_response() -> dict:
 			],
 		},
 	]
+	seen_attributes: set[str] = set()
 	if provider:
 		for mapping in provider.attribute_mappings:
 			scim_path = scim_path_for_mapping(mapping)
 			if ":" in scim_path:
-				_, _, attribute = scim_path.rpartition(":")
+				attribute = scim_path.rpartition(":")[-1]
+				if attribute not in seen_attributes:
+					seen_attributes.add(attribute)
+					attributes.append(
+						{
+							"name": attribute,
+							"type": "string",
+							"required": False,
+							"mutability": "readWrite",
+						}
+					)
+
+		for row in provider.get("table_mappings") or []:
+			source_attribute = (row.get("scim_path") or "").strip()
+			if not source_attribute or ":" not in source_attribute:
+				continue
+			attribute = source_attribute.rpartition(":")[-1]
+			if attribute not in seen_attributes:
+				seen_attributes.add(attribute)
 				attributes.append(
 					{
 						"name": attribute,
@@ -382,7 +398,8 @@ class SCIMApiRenderer:
 			frappe.db.rollback()
 			response = exception_response(error)
 		else:
-			frappe.db.commit()
+			# Custom page renderer returns a Response; persist the SCIM write here.
+			frappe.db.commit()  # nosemgrep: frappe-manual-commit
 
 		if response.code == 204:
 			return scim_response(None, 204)

@@ -1,3 +1,6 @@
+# Copyright (c) 2026, AgriTheory and contributors
+# For license information, please see license.txt
+
 #!/usr/bin/env python3
 # Copyright (c) 2026, AgriTheory and contributors
 # For license information, please see license.txt
@@ -269,7 +272,9 @@ def run_spec(scim_base_url: str, bearer_token: str, spec_path: Path) -> int:
 			failures.append(f"step {index} {method} {url}: " + "; ".join(step_failures))
 
 	if seeded:
-		request_step("DELETE", f"{scim_base_url}/Users/{urllib.parse.quote(seeded, safe='')}", {}, None, bearer_token)
+		request_step(
+			"DELETE", f"{scim_base_url}/Users/{urllib.parse.quote(seeded, safe='')}", {}, None, bearer_token
+		)
 
 	for note in skipped:
 		print(f"skipped {note}")
@@ -284,7 +289,9 @@ def run_spec(scim_base_url: str, bearer_token: str, spec_path: Path) -> int:
 			print(f"  - {failure}")
 		return 1
 
-	print(f"Okta SCIM spec passed ({executed} of {len(steps)} steps executed, {len(skipped)} skipped)")
+	print(
+		f"Okta SCIM spec passed ({executed} of {len(steps)} steps executed, {len(skipped)} skipped)"
+	)
 	return 0
 
 

@@ -3,6 +3,31 @@
 
 import frappe
 from frappe import _
+from frappe.utils import cint
+
+
+def sync_notification_settings_for_scim_user(user, method=None):
+	"""Align Notification Settings before User.validate toggles them.
+
+	SCIM provisioning saves users with ignore_permissions, but Frappe's
+	check_enable_disable still calls toggle_notifications without that flag.
+	Pre-sync the settings so the toggle becomes a no-op.
+	"""
+	if user.is_new() or not user.scim_managed:
+		return
+
+	doc_before = user.get_doc_before_save()
+	if not doc_before or cint(doc_before.enabled) == cint(user.enabled):
+		return
+
+	if not frappe.db.exists("Notification Settings", user.name):
+		return
+
+	settings = frappe.get_doc("Notification Settings", user.name)
+	enable = cint(user.enabled)
+	if settings.enabled != enable:
+		settings.enabled = enable
+		settings.save(ignore_permissions=True)
 
 
 def validate_reset_password(user, method=None):
@@ -14,12 +39,25 @@ def validate_reset_password(user, method=None):
 	3. If there are no enabled SAML Login Keys with password update disallowed
 	"""
 
-	if (
-		user.is_new()
-		or not user.saml_managed
-		or not frappe.get_all(
-			"SAML Login Key", filters={"enable_saml_login": True, "disallow_password_update": True}
-		)
+	if user.is_new():
+		return
+
+	if user.scim_managed:
+		error = {
+			"message": _(
+				"Password reset is not allowed for SCIM-managed users. Please use your identity provider's password management flow."
+			),
+			"title": _("Password Reset Not Allowed"),
+		}
+		if user.get("_User__new_password"):
+			frappe.throw(msg=error["message"], title=error["title"])
+		endpoint = frappe.request and frappe.request.path
+		if endpoint and endpoint.split("/")[-1] in ("frappe.core.doctype.user.user.reset_password",):
+			frappe.throw(msg=error["message"], title=error["title"])
+		return
+
+	if not user.saml_managed or not frappe.get_all(
+		"SAML Login Key", filters={"enable_saml_login": True, "disallow_password_update": True}
 	):
 		return
 

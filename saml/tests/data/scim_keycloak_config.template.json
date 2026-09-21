@@ -1,0 +1,46 @@
+{
+	"_comment": "Review this file before enabling Keycloak outbound SCIM. It targets the pelotech/keycloak-scim User Federation provider (providerId=scim). Keycloak 24 in docker-compose does not include that plugin by default — apply manually after installing the plugin, or use kcadm with push_keycloak_scim_config.py --apply.",
+	"realm": "frappe",
+	"eventsListeners": ["jboss-logging", "scim"],
+	"components": {
+		"org.keycloak.storage.UserStorageProvider": [
+			{
+				"name": "frappe-scim",
+				"providerId": "scim",
+				"config": {
+					"endpoint": ["{{SCIM_BASE_URL}}"],
+					"content-type": ["application/scim+json"],
+					"auth-mode": ["BEARER"],
+					"auth-pass": ["{{SCIM_BEARER_TOKEN}}"],
+					"propagation-user": ["true"],
+					"propagation-group": ["false"],
+					"rollback-strategy": ["never"],
+					"user-extension-mappings": [
+						"email = emails[type eq \"work\"].value",
+						"firstName = name.givenName",
+						"lastName = name.familyName",
+						"active = active ; type=boolean"
+					]
+				}
+			}
+		]
+	},
+	"test_users": [
+		{
+			"username": "warehouse@ambrosiapieco.example",
+			"email": "warehouse@ambrosiapieco.example",
+			"firstName": "Warehouse",
+			"lastName": "Manager",
+			"enabled": true,
+			"realmRoles": ["System Administrator"]
+		},
+		{
+			"username": "scim.provision@ambrosiapieco.example",
+			"email": "scim.provision@ambrosiapieco.example",
+			"firstName": "SCIM",
+			"lastName": "Provision",
+			"enabled": true,
+			"realmRoles": ["default-roles-frappe"]
+		}
+	]
+}

@@ -696,6 +696,19 @@
 						"friendly.name": "givenName",
 						"attribute.name": "urn:oid:2.5.4.42"
 					}
+				},
+				{
+					"id": "c4e8b1a2-9f3d-4a6e-b5c1-2d8f7e6a9012",
+					"name": "employeeNumber",
+					"protocol": "saml",
+					"protocolMapper": "saml-user-attribute-mapper",
+					"consentRequired": false,
+					"config": {
+						"attribute.nameformat": "Basic",
+						"user.attribute": "employeeNumber",
+						"friendly.name": "employeeNumber",
+						"attribute.name": "employeeNumber"
+					}
 				}
 			],
 			"defaultClientScopes": ["role_list"],
@@ -2204,6 +2217,25 @@
 				}
 			],
 			"realmRoles": ["default-roles-frappe", "System Administrator"]
+		},
+		{
+			"username": "scim.demo",
+			"email": "scim.demo@ambrosiapieco.example",
+			"firstName": "SCIM",
+			"lastName": "Demo",
+			"enabled": true,
+			"emailVerified": true,
+			"attributes": {
+				"employeeNumber": ["APC-DEMO-001"]
+			},
+			"credentials": [
+				{
+					"type": "password",
+					"value": "apc-scim-demo",
+					"temporary": false
+				}
+			],
+			"realmRoles": ["default-roles-frappe", "Stock User"]
 		}
 	],
 	"keycloakVersion": "24.0.1",

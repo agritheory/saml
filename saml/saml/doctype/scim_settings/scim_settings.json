@@ -1,0 +1,102 @@
+{
+	"actions": [],
+	"creation": "2026-07-26 12:00:00.000000",
+	"doctype": "DocType",
+	"document_type": "System",
+	"engine": "InnoDB",
+	"field_order": [
+		"enabled",
+		"bearer_token",
+		"service_user",
+		"column_break_general",
+		"identity_provider",
+		"default_user_type",
+		"default_role",
+		"do_not_create_new_user"
+	],
+	"fields": [
+		{
+			"default": "0",
+			"fieldname": "enabled",
+			"fieldtype": "Check",
+			"label": "Enabled"
+		},
+		{
+			"depends_on": "eval:doc.enabled",
+			"fieldname": "bearer_token",
+			"fieldtype": "Password",
+			"label": "Bearer Token",
+			"mandatory_depends_on": "eval:doc.enabled"
+		},
+		{
+			"depends_on": "eval:doc.enabled",
+			"fieldname": "service_user",
+			"fieldtype": "Link",
+			"label": "SCIM Service User",
+			"options": "User",
+			"read_only": 1
+		},
+		{
+			"fieldname": "column_break_general",
+			"fieldtype": "Column Break"
+		},
+		{
+			"depends_on": "eval:doc.enabled",
+			"description": "SAML Login Key whose attribute and role mappings SCIM provisioning uses.",
+			"fieldname": "identity_provider",
+			"fieldtype": "Link",
+			"label": "Identity Provider",
+			"options": "SAML Login Key"
+		},
+		{
+			"default": "System User",
+			"depends_on": "eval:doc.enabled",
+			"fieldname": "default_user_type",
+			"fieldtype": "Link",
+			"label": "Default User Type",
+			"options": "User Type",
+			"reqd": 1
+		},
+		{
+			"depends_on": "eval:doc.enabled",
+			"fieldname": "default_role",
+			"fieldtype": "Link",
+			"label": "Default Role",
+			"options": "Role"
+		},
+		{
+			"default": "0",
+			"depends_on": "eval:doc.enabled",
+			"description": "Only update existing users; reject create requests for unknown users.",
+			"fieldname": "do_not_create_new_user",
+			"fieldtype": "Check",
+			"label": "Do Not Create New User"
+		}
+	],
+	"in_create": 1,
+	"issingle": 1,
+	"links": [],
+	"modified": "2026-07-26 12:00:00.000000",
+	"modified_by": "Administrator",
+	"module": "SAML",
+	"name": "SCIM Settings",
+	"owner": "Administrator",
+	"permissions": [
+		{
+			"create": 1,
+			"delete": 1,
+			"email": 1,
+			"export": 1,
+			"print": 1,
+			"read": 1,
+			"role": "System Manager",
+			"share": 1,
+			"write": 1
+		}
+	],
+	"read_only": 1,
+	"sort_field": "modified",
+	"sort_order": "DESC",
+	"states": [],
+	"track_changes": 1
+}

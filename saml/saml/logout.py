@@ -125,7 +125,8 @@ def get_logout_redirect_url() -> str | None:
 def clear_local_session():
 	if frappe.session.user != "Guest":
 		frappe.local.login_manager.logout()
-		frappe.db.commit()
+		# python-saml delete_session_cb must persist logout before the SLO redirect
+		frappe.db.commit()  # nosemgrep: frappe-manual-commit
 
 
 def build_slo_request_data(provider: str) -> dict:

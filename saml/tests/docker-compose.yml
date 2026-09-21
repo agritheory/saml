@@ -18,10 +18,13 @@ services:
     volumes:
       - ./realm-template.json:/app/realm-template.json
       - ./realm-export.json:/app/realm-export.json
+      - ./scim-keycloak-config.json:/app/scim-keycloak-config.json
+      - ./data:/app/data
       - ./process_realm.py:/app/process_realm.py
     command: python /app/process_realm.py
     environment:
       - BENCH_PORT=${BENCH_PORT:-8000}
+      - SCIM_BEARER_TOKEN=${SCIM_BEARER_TOKEN:-test-scim-bearer-token}
 
   keycloak:
     image: quay.io/keycloak/keycloak:24.0.1

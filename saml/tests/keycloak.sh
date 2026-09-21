@@ -1,6 +1,7 @@
 #!/bin/bash
 which jq > /dev/null || apt install jq
 touch realm-export.json
+touch scim-keycloak-config.json
 
 CONFIG_PATH="../../../../sites/common_site_config.json"
 if [ -f "$CONFIG_PATH" ]; then

@@ -1,10 +1,14 @@
 # Copyright (c) 2025, AgriTheory and contributors
 # For license information, please see license.txt
 
+from urllib.parse import urlencode
+
 import frappe
 from frappe.utils import get_url
 from frappe.www.login import get_context as frappe_get_context
-from frappe.www.login import no_cache, sanitize_redirect
+from frappe.www.login import no_cache
+
+from saml.saml.redirects import normalize_saml_redirect_to
 
 
 def get_context(context):
@@ -20,7 +24,7 @@ def get_context(context):
 
 
 def add_saml_provider_logins(context):
-	redirect_to = sanitize_redirect(frappe.local.request.args.get("redirect-to"))
+	redirect_to = normalize_saml_redirect_to(frappe.local.request.args.get("redirect-to"))
 	saml_providers = []
 
 	for provider in frappe.get_all(
@@ -29,9 +33,10 @@ def add_saml_provider_logins(context):
 		fields=["name", "provider_name"],
 		order_by="name",
 	):
-		login_url = f"/api/method/saml.saml.login?provider={provider.name}"
+		params = {"provider": provider.name}
 		if redirect_to:
-			login_url = f"{login_url}&redirect-to={redirect_to}"
+			params["redirect-to"] = redirect_to
+		login_url = f"/api/method/saml.saml.login?{urlencode(params, safe='/')}"
 
 		saml_providers.append(
 			{

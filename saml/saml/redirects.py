@@ -32,6 +32,10 @@ def normalize_saml_redirect_to(redirect_to: str | None) -> str:
 	if not redirect_to:
 		return ""
 
+	parsed_redirect = urlparse(redirect_to)
+	if parsed_redirect.netloc and not hosts_match(parsed_redirect.netloc):
+		return ""
+
 	safe = sanitize_redirect(redirect_to)
 	if not safe:
 		return ""

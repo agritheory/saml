@@ -1,0 +1,68 @@
+{
+	"actions": [],
+	"creation": "2026-09-21 12:00:00.000000",
+	"doctype": "DocType",
+	"editable_grid": 1,
+	"engine": "InnoDB",
+	"field_order": ["scim_path", "delimiter", "user_table_field", "value_field", "scope_field", "scope_value"],
+	"fields": [
+		{
+			"description": "Full SCIM path of the attribute carrying identifiers, for example urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:employeeNumber. On SAML login the leaf name (employeeNumber) is read from the assertion.",
+			"fieldname": "scim_path",
+			"fieldtype": "Data",
+			"in_list_view": 1,
+			"label": "SCIM Path",
+			"reqd": 1
+		},
+		{
+			"default": ",",
+			"description": "Separator when the identity provider sends several identifiers in one string.",
+			"fieldname": "delimiter",
+			"fieldtype": "Data",
+			"in_list_view": 1,
+			"label": "Delimiter"
+		},
+		{
+			"description": "Table fieldname on User, for example social_logins or barcodes.",
+			"fieldname": "user_table_field",
+			"fieldtype": "Data",
+			"in_list_view": 1,
+			"label": "User Table Field",
+			"reqd": 1
+		},
+		{
+			"description": "Field in the child table that holds the identifier, for example userid or barcode.",
+			"fieldname": "value_field",
+			"fieldtype": "Data",
+			"in_list_view": 1,
+			"label": "Value Field",
+			"reqd": 1
+		},
+		{
+			"description": "Optional child table field marking which rows this provider owns, for example provider or barcode_type.",
+			"fieldname": "scope_field",
+			"fieldtype": "Data",
+			"in_list_view": 1,
+			"label": "Ownership Field"
+		},
+		{
+			"depends_on": "eval:doc.scope_field",
+			"description": "Value written to the ownership field on issued rows, for example keycloak or ID Card.",
+			"fieldname": "scope_value",
+			"fieldtype": "Data",
+			"label": "Ownership Value"
+		}
+	],
+	"index_web_pages_for_search": 1,
+	"istable": 1,
+	"links": [],
+	"modified": "2026-09-21 12:00:00.000000",
+	"modified_by": "Administrator",
+	"module": "SAML",
+	"name": "SAML Table Mapping",
+	"owner": "Administrator",
+	"permissions": [],
+	"sort_field": "modified",
+	"sort_order": "DESC",
+	"states": []
+}

@@ -197,3 +197,4 @@ cypress/videos
 
 # SAML test files
 saml/tests/realm-export.json
+saml/tests/scim-keycloak-config.json

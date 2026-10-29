@@ -71,6 +71,7 @@ jobs:
         working-directory: /home/runner/frappe-bench/apps/saml/saml/tests
         run: |
           export BENCH_PORT=8000
+          export SCIM_BEARER_TOKEN=test-scim-bearer-token
           ./keycloak.sh -d
 
       - name: Wait for Keycloak
@@ -89,7 +90,7 @@ jobs:
         working-directory: /home/runner/frappe-bench
         run: |
           source env/bin/activate
-          pip install pytest-cov pytest-order requests
+          pip install pytest-cov pytest-order requests scim-sanity
           cd apps/saml
           pytest saml/tests \
             --cov=saml \
@@ -113,3 +114,58 @@ jobs:
         with:
           pytest-coverage-path: /home/runner/frappe-bench/apps/saml/pytest-coverage.txt
           pytest-xml-coverage-path: /home/runner/frappe-bench/apps/saml/coverage.xml
+
+  scim-conformance:
+    name: SCIM Conformance (${{ matrix.suite }})
+    needs: tests
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [okta, entra]
+
+    services:
+      mariadb:
+        image: mariadb:10.6
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: YES
+          MYSQL_ROOT_PASSWORD: 'admin'
+        ports:
+          - 3306:3306
+        options: --health-cmd="mysqladmin ping" --health-interval=5s --health-timeout=2s --health-retries=3
+
+    steps:
+      - name: Clone
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Add to Hosts
+        run: echo "127.0.0.1 test_site" | sudo tee -a /etc/hosts
+
+      - name: Install Poetry
+        uses: abatilo/actions-poetry@v4
+
+      - name: Install App Dependencies
+        run: bash ${{ github.workspace }}/.github/helper/install_dependencies.sh
+
+      - name: Install Bench Site and Apps
+        env:
+          MYSQL_HOST: 'localhost'
+          MYSQL_PWD: 'admin'
+        run: bash ${{ github.workspace }}/.github/helper/install.sh
+
+      - name: Run SCIM conformance suite
+        working-directory: /home/runner/frappe-bench
+        env:
+          SCIM_BASE_URL: http://127.0.0.1:8000/scim/v2
+          SCIM_BEARER_TOKEN: test-scim-bearer-token
+          BENCH_DIR: /home/runner/frappe-bench
+        run: |
+          source env/bin/activate
+          pip install scim-sanity requests
+          chmod +x apps/saml/saml/tests/run_scim_conformance.sh
+          apps/saml/saml/tests/run_scim_conformance.sh ${{ matrix.suite }}

@@ -1010,6 +1010,23 @@ def test_acs_applies_picker_role_from_keycloak(keycloak_session):
 	assert "Workspace Manager" in roles
 
 
+@pytest.mark.order(573)
+def test_acs_syncs_social_logins_from_employee_number(keycloak_session):
+	email = "scim.demo@ambrosiapieco.example"
+	if frappe.db.exists("User", email):
+		frappe.delete_doc("User", email, force=True, ignore_permissions=True)
+
+	saml_response, relay_state, acs_url = keycloak.complete_keycloak_login(
+		"scim.demo", "apc-scim-demo"
+	)
+	keycloak.invoke_acs(saml_response, relay_state)
+
+	user = frappe.get_doc("User", email)
+	keycloak_rows = [row for row in user.social_logins if row.provider == "keycloak"]
+	assert len(keycloak_rows) == 1
+	assert keycloak_rows[0].userid == "APC-DEMO-001"
+
+
 @pytest.mark.order(57)
 def test_acs_removes_unmatched_roles_when_match_enabled(keycloak_session):
 	email = "kb.contributor@ambrosiapieco.example"
